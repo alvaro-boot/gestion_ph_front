@@ -2,6 +2,19 @@ import { getServerToken, getToken } from './auth';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
 
+const getCache = new Map<string, { expires: number; data: unknown }>();
+const GET_CACHE_MS = 30_000;
+
+export function invalidateApiCache(prefix?: string) {
+  if (!prefix) {
+    getCache.clear();
+    return;
+  }
+  for (const key of [...getCache.keys()]) {
+    if (key.startsWith(prefix)) getCache.delete(key);
+  }
+}
+
 async function authHeaders(): Promise<HeadersInit> {
   const token =
     typeof window !== 'undefined' ? getToken() : await getServerToken();
@@ -12,6 +25,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const auth = await authHeaders();
   const method = (init?.method ?? 'GET').toUpperCase();
   const isServer = typeof window === 'undefined';
+
+  if (!isServer && method === 'GET') {
+    const hit = getCache.get(path);
+    if (hit && hit.expires > Date.now()) {
+      return hit.data as T;
+    }
+  }
+
   let res: Response;
   try {
     res = await fetch(`${API_URL}${path}`, {
@@ -55,7 +76,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     }
     throw new Error(message);
   }
-  return res.json() as Promise<T>;
+  const data = (await res.json()) as T;
+  if (!isServer && method === 'GET') {
+    getCache.set(path, { data, expires: Date.now() + GET_CACHE_MS });
+  }
+  return data;
 }
 
 export const api = {
@@ -68,6 +93,12 @@ export const api = {
     me: () => request<import('./auth').AuthUser>('/auth/me'),
   },
   dashboard: () => request<import('./types').Dashboard>('/client-processes/dashboard'),
+  home: {
+    bootstrap: (year: number, month: number) =>
+      request<import('./types').HomeBootstrap>(
+        `/client-processes/home?year=${year}&month=${month}`,
+      ),
+  },
   clients: {
     list: () => request<import('./types').Client[]>('/clients'),
     get: (id: string) => request<import('./types').Client>(`/clients/${id}`),

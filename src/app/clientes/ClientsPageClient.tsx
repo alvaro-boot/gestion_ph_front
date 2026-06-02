@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { Client, ClientProcess, ProcessTemplate } from '@/lib/types';
@@ -58,14 +58,16 @@ function clientHasTrackableProcess(client: Client): boolean {
 type FollowUpFilter = 'all' | 'stale30' | 'never' | 'overdue';
 
 export function ClientsPageClient({
-  initialClients,
-  templates,
+  initialClients = [],
+  templates: initialTemplates = [],
 }: {
-  initialClients: Client[];
-  templates: ProcessTemplate[];
+  initialClients?: Client[];
+  templates?: ProcessTemplate[];
 }) {
   const router = useRouter();
   const [clients, setClients] = useState(initialClients);
+  const [templates, setTemplates] = useState(initialTemplates);
+  const [pageLoading, setPageLoading] = useState(initialClients.length === 0);
   const [search, setSearch] = useState('');
   const [followUpFilter, setFollowUpFilter] = useState<FollowUpFilter>('all');
   const [sortBy, setSortBy] = useState<'name' | 'followUp'>('followUp');
@@ -80,6 +82,30 @@ export function ClientsPageClient({
     phone: '',
     contactName: '',
   });
+
+  useEffect(() => {
+    if (initialClients.length > 0 && initialTemplates.length > 0) return;
+    let cancelled = false;
+    (async () => {
+      setPageLoading(true);
+      try {
+        const [clientList, templateList] = await Promise.all([
+          api.clients.list(),
+          api.templates.list(),
+        ]);
+        if (cancelled) return;
+        setClients(clientList);
+        setTemplates(templateList);
+      } catch {
+        /* el usuario verá lista vacía */
+      } finally {
+        if (!cancelled) setPageLoading(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [initialClients.length, initialTemplates.length]);
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
@@ -201,6 +227,17 @@ export function ClientsPageClient({
         </button>
       </div>
 
+      {pageLoading ? (
+        <div className="rounded-xl border border-slate-200 bg-white p-8 animate-pulse">
+          <div className="h-4 bg-slate-200 rounded w-1/3 mb-4" />
+          <div className="space-y-3">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <div key={i} className="h-10 bg-slate-100 rounded" />
+            ))}
+          </div>
+        </div>
+      ) : (
+        <>
       {showForm && (
         <form
           onSubmit={handleCreate}
@@ -449,6 +486,8 @@ export function ClientsPageClient({
           </tbody>
         </table>
       </div>
+        </>
+      )}
     </div>
   );
 }

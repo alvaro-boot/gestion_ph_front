@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { api } from '@/lib/api';
 import type { User } from '@/lib/types';
 import { getStoredUser } from '@/lib/auth';
+import { PasswordInput } from '@/components/PasswordInput';
 
 export default function UsuariosPage() {
   const router = useRouter();
@@ -143,15 +144,15 @@ export default function UsuariosPage() {
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="block">
               <span className="text-sm text-slate-700">Contraseña</span>
-              <input
-                value={form.password}
-                onChange={(e) =>
-                  setForm((p) => ({ ...p, password: e.target.value }))}
-                required
-                type="password"
-                minLength={6}
-                className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-              />
+              <div className="mt-1">
+                <PasswordInput
+                  value={form.password}
+                  onChange={(password) => setForm((p) => ({ ...p, password }))}
+                  autoComplete="new-password"
+                  required
+                  minLength={6}
+                />
+              </div>
             </label>
 
             <label className="block">

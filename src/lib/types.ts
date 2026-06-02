@@ -186,6 +186,11 @@ export interface CalendarBootstrap {
   clients: CalendarClientOption[];
 }
 
+export interface HomeBootstrap {
+  dashboard: Dashboard;
+  calendar: CalendarBootstrap;
+}
+
 /** @deprecated use CalendarMonthItem */
 export interface CalendarMeeting {
   id: string;
