@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: 'Bitácora de clientes',
+  title: 'Gestion PH',
   description: 'Seguimiento de procesos y etapas por cliente',
 };
 

@@ -40,9 +40,9 @@ export function Nav() {
       <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
         <Link href="/" className="flex items-center gap-2 font-semibold text-slate-900">
           <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-sm text-white">
-            B
+            G
           </span>
-          Bitácora de clientes
+          Gestion PH
         </Link>
         <div className="flex items-center gap-2">
           <nav className="flex gap-1">

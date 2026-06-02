@@ -35,10 +35,10 @@ export function LoginForm() {
       <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-8 shadow-lg">
         <div className="mb-6 text-center">
           <span className="inline-flex h-12 w-12 items-center justify-center rounded-xl bg-indigo-600 text-lg font-bold text-white">
-            B
+            G
           </span>
           <h1 className="mt-4 text-xl font-bold text-slate-900">
-            Bitácora de clientes
+            Gestion PH
           </h1>
           <p className="mt-1 text-sm text-slate-500">Inicia sesión para continuar</p>
         </div>
