@@ -176,6 +176,11 @@ export const api = {
       }),
     cancelMeeting: (id: string) =>
       request(`/calendar/meetings/${id}/cancel`, { method: 'POST' }),
+    updateMeeting: (id: string, data: Record<string, unknown>) =>
+      request(`/calendar/meetings/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
   },
   meetings: {
     create: (data: Record<string, unknown>) =>

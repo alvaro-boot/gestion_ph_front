@@ -88,6 +88,20 @@ function defaultDatetimeForDay(date: Date) {
 
 type AddKind = CalendarItemKind;
 
+function itemIsOpen(item: CalendarMonthItem) {
+  if (item.kind === 'meeting') return item.status === 'scheduled';
+  return item.status === 'active';
+}
+
+function statusLabel(item: CalendarMonthItem) {
+  if (item.status === 'completed') return 'Terminada';
+  if (item.status === 'cancelled') return 'Cancelada';
+  if (item.kind === 'meeting') return 'Programada';
+  return 'Pendiente';
+}
+
+type ViewAction = 'postpone' | 'complete' | null;
+
 export function MeetingsCalendar({
   initialBootstrap = null,
   initialYear,
@@ -118,6 +132,9 @@ export function MeetingsCalendar({
     date: Date;
   } | null>(null);
   const [viewItem, setViewItem] = useState<CalendarMonthItem | null>(null);
+  const [viewAction, setViewAction] = useState<ViewAction>(null);
+  const [postponeAt, setPostponeAt] = useState('');
+  const [completionNotes, setCompletionNotes] = useState('');
 
   const [meetingForm, setMeetingForm] = useState({
     processKey: '',
@@ -294,25 +311,33 @@ export function MeetingsCalendar({
     }
   }
 
-  async function cancelOrDelete() {
+  function openViewItem(item: CalendarMonthItem) {
+    setViewItem(item);
+    setViewAction(null);
+    setPostponeAt(toDatetimeLocalValue(new Date(item.at)));
+    setCompletionNotes('');
+  }
+
+  function closeViewItem() {
+    setViewItem(null);
+    setViewAction(null);
+    setCompletionNotes('');
+  }
+
+  async function handleCancelItem() {
     if (!viewItem) return;
-    if (
-      !confirm(
-        viewItem.kind === 'meeting'
-          ? '¿Cancelar esta reunión?'
-          : '¿Eliminar esta fecha de entrega?',
-      )
-    ) {
-      return;
-    }
+    const label =
+      viewItem.kind === 'meeting' ? '¿Cancelar esta reunión?' : '¿Cancelar esta entrega?';
+    if (!confirm(label)) return;
+
     setSaving(true);
     try {
       if (viewItem.kind === 'meeting') {
         await api.calendar.cancelMeeting(viewItem.id);
       } else {
-        await api.calendar.deleteDelivery(viewItem.id);
+        await api.calendar.updateDelivery(viewItem.id, { status: 'cancelled' });
       }
-      setViewItem(null);
+      closeViewItem();
       await loadMonth();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error');
@@ -320,6 +345,57 @@ export function MeetingsCalendar({
       setSaving(false);
     }
   }
+
+  async function handlePostponeItem(e: React.FormEvent) {
+    e.preventDefault();
+    if (!viewItem || !postponeAt) return;
+
+    setSaving(true);
+    try {
+      const iso = new Date(postponeAt).toISOString();
+      if (viewItem.kind === 'meeting') {
+        await api.calendar.updateMeeting(viewItem.id, { scheduledAt: iso });
+      } else {
+        await api.calendar.updateDelivery(viewItem.id, { dueAt: iso });
+      }
+      closeViewItem();
+      await loadMonth();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleCompleteItem(e: React.FormEvent) {
+    e.preventDefault();
+    if (!viewItem || !completionNotes.trim()) {
+      alert('Escribe notas para terminar el evento.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (viewItem.kind === 'meeting') {
+        await api.calendar.updateMeeting(viewItem.id, {
+          status: 'completed',
+          notes: completionNotes.trim(),
+        });
+      } else {
+        await api.calendar.updateDelivery(viewItem.id, {
+          status: 'completed',
+          completionNotes: completionNotes.trim(),
+        });
+      }
+      closeViewItem();
+      await loadMonth();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
 
   const processesForClient =
     clients.find((c) => c.id === deliveryForm.clientId)?.processes ?? [];
@@ -454,8 +530,10 @@ export function MeetingsCalendar({
                     <li key={`${item.kind}-${item.id}`}>
                       <button
                         type="button"
-                        onClick={() => setViewItem(item)}
-                        className={`w-full text-left rounded px-1 py-0.5 text-[10px] leading-tight border ${meetingItemStyle(item)}`}
+                        onClick={() => openViewItem(item)}
+                        className={`w-full text-left rounded px-1 py-0.5 text-[10px] leading-tight border ${meetingItemStyle(item)} ${
+                          item.status === 'completed' ? 'opacity-60 line-through' : ''
+                        }`}
                       >
                         <span className="font-medium">{formatTime(item.at)}</span>
                         <span className="line-clamp-1 opacity-90">{item.clientName}</span>
@@ -660,7 +738,7 @@ export function MeetingsCalendar({
 
       {viewItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-sm w-full p-5">
+          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-5 max-h-[90vh] overflow-y-auto">
             <span
               className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full mb-2 ${meetingItemStyle(viewItem)}`}
             >
@@ -668,39 +746,133 @@ export function MeetingsCalendar({
                 ? 'Reunión · Seguimiento'
                 : KIND_LABELS[viewItem.kind]}
             </span>
-            <h3 className="font-semibold text-slate-900">{viewItem.title}</h3>
-            <p className="text-sm text-slate-600 mt-1">{viewItem.clientName}</p>
-            <p className="text-sm text-slate-500 mt-2">
-              {formatDateTime(viewItem.at)}
-            </p>
-            {viewItem.description && (
-              <p className="text-sm text-slate-600 mt-2">{viewItem.description}</p>
-            )}
-            <div className="flex flex-wrap gap-2 mt-4">
-              {viewItem.processId && (
-                <Link
-                  href={`/procesos/${viewItem.processId}`}
-                  className="text-sm text-indigo-600 hover:underline"
-                >
-                  Ver proceso
-                </Link>
-              )}
-              <button
-                type="button"
-                disabled={saving}
-                onClick={cancelOrDelete}
-                className="text-sm text-red-600 hover:underline disabled:opacity-50"
-              >
-                {viewItem.kind === 'meeting' ? 'Cancelar reunión' : 'Eliminar entrega'}
-              </button>
-              <button
-                type="button"
-                onClick={() => setViewItem(null)}
-                className="text-sm text-slate-600 hover:underline ml-auto"
-              >
-                Cerrar
-              </button>
+            <div className="flex items-start justify-between gap-2">
+              <h3 className="font-semibold text-slate-900">{viewItem.title}</h3>
+              <span className="text-xs font-medium text-slate-500 shrink-0">
+                {statusLabel(viewItem)}
+              </span>
             </div>
+            <p className="text-sm text-slate-600 mt-1">{viewItem.clientName}</p>
+            <p className="text-sm text-slate-500 mt-2">{formatDateTime(viewItem.at)}</p>
+            {viewItem.description && (
+              <p className="text-sm text-slate-600 mt-2">
+                <span className="font-medium text-slate-700">Detalle: </span>
+                {viewItem.description}
+              </p>
+            )}
+            {(viewItem.notes || viewItem.completionNotes) && (
+              <p className="text-sm text-emerald-800 mt-2 rounded-lg bg-emerald-50 px-3 py-2">
+                <span className="font-medium">Notas de cierre: </span>
+                {viewItem.notes ?? viewItem.completionNotes}
+              </p>
+            )}
+
+            {viewAction === 'postpone' && itemIsOpen(viewItem) && (
+              <form onSubmit={handlePostponeItem} className="mt-4 space-y-3 border-t pt-4">
+                <p className="text-sm font-medium text-slate-800">Aplazar evento</p>
+                <input
+                  required
+                  type="datetime-local"
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  value={postponeAt}
+                  onChange={(e) => setPostponeAt(e.target.value)}
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
+                  >
+                    Guardar nueva fecha
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewAction(null)}
+                    className="text-sm text-slate-600 hover:underline"
+                  >
+                    Volver
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {viewAction === 'complete' && itemIsOpen(viewItem) && (
+              <form onSubmit={handleCompleteItem} className="mt-4 space-y-3 border-t pt-4">
+                <p className="text-sm font-medium text-slate-800">Terminar con notas</p>
+                <textarea
+                  required
+                  rows={3}
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                  placeholder="¿Qué se hizo? Resultado, acuerdos, pendientes…"
+                  value={completionNotes}
+                  onChange={(e) => setCompletionNotes(e.target.value)}
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="rounded-lg bg-emerald-600 px-4 py-2 text-sm text-white hover:bg-emerald-700 disabled:opacity-50"
+                  >
+                    Marcar como terminada
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewAction(null)}
+                    className="text-sm text-slate-600 hover:underline"
+                  >
+                    Volver
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {!viewAction && (
+              <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
+                {viewItem.processId && (
+                  <Link
+                    href={`/procesos/${viewItem.processId}`}
+                    className="text-sm text-indigo-600 hover:underline"
+                  >
+                    Ver proceso
+                  </Link>
+                )}
+                {itemIsOpen(viewItem) && (
+                  <>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => setViewAction('postpone')}
+                      className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                    >
+                      Aplazar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={() => setViewAction('complete')}
+                      className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                    >
+                      Terminar
+                    </button>
+                    <button
+                      type="button"
+                      disabled={saving}
+                      onClick={handleCancelItem}
+                      className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm text-red-700 hover:bg-red-100 disabled:opacity-50"
+                    >
+                      Cancelar
+                    </button>
+                  </>
+                )}
+                <button
+                  type="button"
+                  onClick={closeViewItem}
+                  className="text-sm text-slate-600 hover:underline ml-auto"
+                >
+                  Cerrar
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

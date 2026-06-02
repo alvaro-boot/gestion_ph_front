@@ -160,6 +160,8 @@ export interface CalendarMonthItem {
   stageProgressId?: string | null;
   description?: string | null;
   processKind?: 'onboarding' | 'seguimiento';
+  notes?: string | null;
+  completionNotes?: string | null;
 }
 
 export interface CalendarPickerOption {
