@@ -7,13 +7,15 @@ import type { Client, ClientProcess, ProcessTemplate } from '@/lib/types';
 import { api } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
 import { FollowUpStatusBadge } from '@/components/FollowUpStatusBadge';
+import { onboardingProcesses } from '@/lib/process-utils';
 
 /** Proceso activo primero; si no hay, el onboarding completado más reciente. */
 function getDisplayProcess(processes?: ClientProcess[]) {
-  if (!processes?.length) return null;
-  const active = processes.find((p) => p.status === 'active');
+  const list = onboardingProcesses(processes);
+  if (!list.length) return null;
+  const active = list.find((p) => p.status === 'active');
   if (active) return { process: active, kind: 'active' as const };
-  const completed = [...processes]
+  const completed = [...list]
     .filter((p) => p.status === 'completed')
     .sort((a, b) => {
       const tb = new Date(b.completedAt ?? b.startedAt ?? 0).getTime();
@@ -48,10 +50,8 @@ function clientMatchesSearch(client: Client, query: string) {
 }
 
 function clientHasTrackableProcess(client: Client): boolean {
-  return (
-    client.processes?.some(
-      (p) => p.status === 'active' || p.status === 'completed',
-    ) ?? false
+  return onboardingProcesses(client.processes).some(
+    (p) => p.status === 'active' || p.status === 'completed',
   );
 }
 

@@ -439,7 +439,7 @@ export function MeetingsCalendar() {
                         <>
                           {pickerOptions.filter((p) => p.processKind === 'onboarding')
                             .length > 0 && (
-                            <optgroup label="Onboarding en curso">
+                            <optgroup label="Clientes">
                               {pickerOptions
                                 .filter((p) => p.processKind === 'onboarding')
                                 .map((p) => (
@@ -447,19 +447,7 @@ export function MeetingsCalendar() {
                                     {p.clientName}
                                     {p.currentStageName
                                       ? ` — ${p.currentStageName}`
-                                      : ''}
-                                  </option>
-                                ))}
-                            </optgroup>
-                          )}
-                          {pickerOptions.filter((p) => p.processKind === 'seguimiento')
-                            .length > 0 && (
-                            <optgroup label="Seguimiento (onboarding completado)">
-                              {pickerOptions
-                                .filter((p) => p.processKind === 'seguimiento')
-                                .map((p) => (
-                                  <option key={p.processId} value={p.processId}>
-                                    {p.clientName} — {p.templateName}
+                                      : ` — ${p.templateName}`}
                                   </option>
                                 ))}
                             </optgroup>

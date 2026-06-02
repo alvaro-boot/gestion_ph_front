@@ -9,6 +9,7 @@ import { formatDate, formatDateTime } from '@/lib/format';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SeguimientosPanel } from '@/components/SeguimientosPanel';
 import { FollowUpStatusBadge } from '@/components/FollowUpStatusBadge';
+import { onboardingProcesses } from '@/lib/process-utils';
 
 export function ClientDetailClient({
   initialClient,
@@ -28,10 +29,11 @@ export function ClientDetailClient({
     notes: client.notes ?? '',
   });
 
-  const hasOnboardingProcess = client.processes?.some(
+  const processes = onboardingProcesses(client.processes);
+  const hasOnboardingProcess = processes.some(
     (p) => p.status === 'completed' || p.status === 'active',
   );
-  const activeProcess = client.processes?.find((p) => p.status === 'active');
+  const activeProcess = processes.find((p) => p.status === 'active');
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -280,11 +282,11 @@ export function ClientDetailClient({
 
       <section>
         <h2 className="font-semibold text-slate-900 mb-3">Onboarding</h2>
-        {!client.processes?.length ? (
+        {!processes.length ? (
           <p className="text-sm text-slate-500">Sin procesos asignados.</p>
         ) : (
           <ul className="space-y-2">
-            {client.processes.map((p) => (
+            {processes.map((p) => (
               <li
                 key={p.id}
                 className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-4 py-3"
@@ -318,7 +320,7 @@ export function ClientDetailClient({
           clientId={client.id}
           clientName={client.name}
           initialItems={client.followUps ?? []}
-          processes={client.processes ?? []}
+          processes={processes}
           defaultProcessId={activeProcess?.id}
           currentStageName={
             activeProcess?.stageProgresses?.find((s) => s.status === 'in_progress')

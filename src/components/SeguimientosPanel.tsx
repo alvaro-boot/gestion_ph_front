@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { ClientProcess, FollowUp, FollowUpType } from '@/lib/types';
 import { api } from '@/lib/api';
 import { followUpTypeLabels, formatDate, formatDateTime, toDatetimeLocalValue } from '@/lib/format';
+import { onboardingProcesses } from '@/lib/process-utils';
 
 const TYPES: FollowUpType[] = [
   'call',
@@ -36,7 +37,7 @@ export function SeguimientosPanel({
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
 
-  const linkableProcesses = processes.filter(
+  const linkableProcesses = onboardingProcesses(processes).filter(
     (p) => p.status === 'active' || p.status === 'completed',
   );
   const defaultProcess =
@@ -106,27 +107,16 @@ export function SeguimientosPanel({
   return (
     <section id="seguimientos" className="rounded-xl border border-slate-200 bg-white shadow-sm overflow-hidden">
       <div className="border-b border-slate-100 bg-slate-50 px-5 py-4">
-        <h2 className="font-semibold text-slate-900">
-          {isDuringOnboarding ? 'Seguimientos del cliente' : 'Seguimientos post-onboarding'}
-        </h2>
+        <h2 className="font-semibold text-slate-900">Seguimientos</h2>
         <p className="text-sm text-slate-600 mt-1">
-          {isDuringOnboarding ? (
+          Llamadas, visitas y notas con <strong>{clientName}</strong>
+          {currentStageName && isDuringOnboarding ? (
             <>
-              Llamadas, visitas y notas con <strong>{clientName}</strong>
-              {currentStageName ? (
-                <>
-                  {' '}
-                  durante la etapa <strong>{currentStageName}</strong> del onboarding.
-                </>
-              ) : (
-                <> mientras el onboarding está en curso o ya terminó.</>
-              )}
+              {' '}
+              durante la etapa <strong>{currentStageName}</strong> del onboarding.
             </>
           ) : (
-            <>
-              Registra llamadas, visitas y notas después de completar el proceso con{' '}
-              <strong>{clientName}</strong>.
-            </>
+            <> (durante o después del onboarding).</>
           )}
         </p>
       </div>

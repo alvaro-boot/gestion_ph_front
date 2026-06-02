@@ -1,5 +1,6 @@
-import { notFound } from 'next/navigation';
+import { notFound, redirect } from 'next/navigation';
 import { api } from '@/lib/api';
+import { isSeguimientoProcess, onboardingProcesses } from '@/lib/process-utils';
 import { ProcessDetailClient } from './ProcessDetailClient';
 
 export default async function ProcesoPage({
@@ -15,6 +16,10 @@ export default async function ProcesoPage({
     notFound();
   }
 
+  if (isSeguimientoProcess(process) && process.client?.id) {
+    redirect(`/clientes/${process.client.id}#seguimientos`);
+  }
+
   let followUps: import('@/lib/types').FollowUp[] = [];
   let clientProcesses: import('@/lib/types').ClientProcess[] = [];
 
@@ -25,7 +30,7 @@ export default async function ProcesoPage({
     try {
       const client = await api.clients.get(process.client.id);
       followUps = client.followUps ?? [];
-      clientProcesses = client.processes ?? [];
+      clientProcesses = onboardingProcesses(client.processes);
     } catch {
       /* seguimientos opcionales */
     }
