@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import type {
+  CalendarBootstrap,
+  CalendarClientOption,
   CalendarItemKind,
   CalendarMonthItem,
   CalendarPickerOption,
-  Client,
 } from '@/lib/types';
 import { api } from '@/lib/api';
 import { formatDateTime, toDatetimeLocalValue } from '@/lib/format';
@@ -87,14 +88,28 @@ function defaultDatetimeForDay(date: Date) {
 
 type AddKind = CalendarItemKind;
 
-export function MeetingsCalendar() {
+export function MeetingsCalendar({
+  initialBootstrap = null,
+  initialYear,
+  initialMonth,
+}: {
+  initialBootstrap?: CalendarBootstrap | null;
+  initialYear?: number;
+  initialMonth?: number;
+}) {
   const now = new Date();
-  const [year, setYear] = useState(now.getFullYear());
-  const [month, setMonth] = useState(now.getMonth() + 1);
-  const [items, setItems] = useState<CalendarMonthItem[]>([]);
-  const [pickerOptions, setPickerOptions] = useState<CalendarPickerOption[]>([]);
-  const [clients, setClients] = useState<Client[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [year, setYear] = useState(initialYear ?? now.getFullYear());
+  const [month, setMonth] = useState(initialMonth ?? now.getMonth() + 1);
+  const [items, setItems] = useState<CalendarMonthItem[]>(
+    initialBootstrap?.items ?? [],
+  );
+  const [pickerOptions, setPickerOptions] = useState<CalendarPickerOption[]>(
+    initialBootstrap?.pickerOptions ?? [],
+  );
+  const [clients, setClients] = useState<CalendarClientOption[]>(
+    initialBootstrap?.clients ?? [],
+  );
+  const [loadingMonth, setLoadingMonth] = useState(!initialBootstrap);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -117,29 +132,77 @@ export function MeetingsCalendar() {
     description: '',
   });
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const initialLoadDone = useRef(!!initialBootstrap);
+  const skipFirstMonthEffect = useRef(!!initialBootstrap);
+
+  const loadMonth = useCallback(async () => {
+    setLoadingMonth(true);
     setError(null);
     try {
-      const [monthItems, options, clientList] = await Promise.all([
-        api.calendar.month(year, month),
-        api.calendar.pickerOptions(),
-        api.clients.list(),
-      ]);
+      const monthItems = await api.calendar.month(year, month);
       setItems(monthItems);
-      setPickerOptions(options);
-      setClients(clientList);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al cargar calendario');
       setItems([]);
     } finally {
-      setLoading(false);
+      setLoadingMonth(false);
     }
   }, [year, month]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (skipFirstMonthEffect.current) {
+      skipFirstMonthEffect.current = false;
+      return;
+    }
+
+    let cancelled = false;
+
+    async function run() {
+      if (!initialLoadDone.current) {
+        initialLoadDone.current = true;
+        setLoadingMonth(true);
+        setError(null);
+        try {
+          const data = await api.calendar.bootstrap(year, month);
+          if (cancelled) return;
+          setItems(data.items);
+          setPickerOptions(data.pickerOptions);
+          setClients(data.clients);
+        } catch (err) {
+          if (!cancelled) {
+            setError(
+              err instanceof Error ? err.message : 'Error al cargar calendario',
+            );
+            setItems([]);
+          }
+        } finally {
+          if (!cancelled) setLoadingMonth(false);
+        }
+        return;
+      }
+
+      setLoadingMonth(true);
+      setError(null);
+      try {
+        const monthItems = await api.calendar.month(year, month);
+        if (!cancelled) setItems(monthItems);
+      } catch (err) {
+        if (!cancelled) {
+          setError(
+            err instanceof Error ? err.message : 'Error al cargar calendario',
+          );
+          setItems([]);
+        }
+      } finally {
+        if (!cancelled) setLoadingMonth(false);
+      }
+    }
+
+    run();
+    return () => {
+      cancelled = true;
+    };
+  }, [year, month]);
 
   function goMonth(delta: number) {
     let m = month + delta;
@@ -223,7 +286,7 @@ export function MeetingsCalendar() {
         });
       }
       setAddModal(null);
-      await load();
+      await loadMonth();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error al guardar');
     } finally {
@@ -250,7 +313,7 @@ export function MeetingsCalendar() {
         await api.calendar.deleteDelivery(viewItem.id);
       }
       setViewItem(null);
-      await load();
+      await loadMonth();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error');
     } finally {
@@ -326,7 +389,9 @@ export function MeetingsCalendar() {
         </p>
       )}
 
-      <div className={`p-4 ${loading ? 'opacity-50 pointer-events-none' : ''}`}>
+      <div
+        className={`p-4 ${loadingMonth ? 'opacity-50 pointer-events-none' : ''}`}
+      >
         <div className="grid grid-cols-7 gap-px bg-slate-200 rounded-lg overflow-hidden border border-slate-200">
           {WEEKDAYS.map((wd) => (
             <div
@@ -524,7 +589,7 @@ export function MeetingsCalendar() {
                         <option value="">—</option>
                         {processesForClient.map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.processTemplate?.name ?? 'Proceso'}
+                            {p.name}
                           </option>
                         ))}
                       </select>

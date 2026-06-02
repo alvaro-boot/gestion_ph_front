@@ -172,6 +172,18 @@ export interface CalendarPickerOption {
   currentStageName: string | null;
 }
 
+export interface CalendarClientOption {
+  id: string;
+  name: string;
+  processes: { id: string; name: string }[];
+}
+
+export interface CalendarBootstrap {
+  items: CalendarMonthItem[];
+  pickerOptions: CalendarPickerOption[];
+  clients: CalendarClientOption[];
+}
+
 /** @deprecated use CalendarMonthItem */
 export interface CalendarMeeting {
   id: string;

@@ -147,6 +147,10 @@ export const api = {
       ),
   },
   calendar: {
+    bootstrap: (year: number, month: number) =>
+      request<import('./types').CalendarBootstrap>(
+        `/calendar/bootstrap?year=${year}&month=${month}`,
+      ),
     month: (year: number, month: number) =>
       request<import('./types').CalendarMonthItem[]>(
         `/calendar?year=${year}&month=${month}`,

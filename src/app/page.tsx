@@ -4,9 +4,17 @@ import { formatDate } from '@/lib/format';
 import { MeetingsCalendar } from '@/components/MeetingsCalendar';
 
 export default async function DashboardPage() {
+  const now = new Date();
+  const calendarYear = now.getFullYear();
+  const calendarMonth = now.getMonth() + 1;
+
   let data;
+  let calendarBootstrap = null;
   try {
-    data = await api.dashboard();
+    [data, calendarBootstrap] = await Promise.all([
+      api.dashboard(),
+      api.calendar.bootstrap(calendarYear, calendarMonth).catch(() => null),
+    ]);
   } catch {
     return (
       <div className="rounded-xl border border-amber-200 bg-amber-50 p-6 text-amber-900">
@@ -58,7 +66,11 @@ export default async function DashboardPage() {
         ))}
       </div>
 
-      <MeetingsCalendar />
+      <MeetingsCalendar
+        initialBootstrap={calendarBootstrap}
+        initialYear={calendarYear}
+        initialMonth={calendarMonth}
+      />
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
         <div className="flex flex-wrap items-end justify-between gap-2">
