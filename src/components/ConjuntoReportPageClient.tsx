@@ -3,8 +3,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
-import type { Client, ConjuntoReport } from '@/lib/types';
+import type { ConjuntoPickerItem, ConjuntoReport } from '@/lib/types';
 import { api } from '@/lib/api';
+import { getToken } from '@/lib/auth';
 import {
   followUpTypeLabels,
   formatDate,
@@ -20,14 +21,14 @@ const DELIVERY_LABELS: Record<string, string> = {
   internal_delivery: 'Nuestra entrega',
 };
 
-function clientLabel(c: Client) {
+function clientLabel(c: ConjuntoPickerItem) {
   return c.company ? `${c.name} — ${c.company}` : c.name;
 }
 
 export function ConjuntoReportPageClient({
   initialClients,
 }: {
-  initialClients: Client[];
+  initialClients: ConjuntoPickerItem[];
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -41,6 +42,11 @@ export function ConjuntoReportPageClient({
   const [report, setReport] = useState<ConjuntoReport | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  useEffect(() => {
+    setIsLoggedIn(!!getToken());
+  }, []);
 
   const filteredClients = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -196,22 +202,24 @@ export function ConjuntoReportPageClient({
                   </div>
                 </dl>
               </div>
-              <div className="flex flex-col gap-2 shrink-0">
-                <Link
-                  href={`/clientes/${report.client.id}`}
-                  className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 text-center"
-                >
-                  Ficha completa
-                </Link>
-                {report.process && (
+              {isLoggedIn && (
+                <div className="flex flex-col gap-2 shrink-0">
                   <Link
-                    href={`/procesos/${report.process.id}`}
-                    className="rounded-lg border border-indigo-200 bg-white px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 text-center"
+                    href={`/clientes/${report.client.id}`}
+                    className="rounded-lg bg-indigo-600 px-4 py-2 text-sm font-medium text-white hover:bg-indigo-700 text-center"
                   >
-                    Ver proceso
+                    Ficha completa
                   </Link>
-                )}
-              </div>
+                  {report.process && (
+                    <Link
+                      href={`/procesos/${report.process.id}`}
+                      className="rounded-lg border border-indigo-200 bg-white px-4 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-50 text-center"
+                    >
+                      Ver proceso
+                    </Link>
+                  )}
+                </div>
+              )}
             </div>
           </header>
 

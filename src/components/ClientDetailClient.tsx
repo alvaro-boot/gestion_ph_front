@@ -10,6 +10,7 @@ import { StatusBadge } from '@/components/StatusBadge';
 import { SeguimientosPanel } from '@/components/SeguimientosPanel';
 import { FollowUpStatusBadge } from '@/components/FollowUpStatusBadge';
 import { onboardingProcesses } from '@/lib/process-utils';
+import { isAdminUser } from '@/lib/auth';
 
 export function ClientDetailClient({
   initialClient,
@@ -34,6 +35,7 @@ export function ClientDetailClient({
     (p) => p.status === 'completed' || p.status === 'active',
   );
   const activeProcess = processes.find((p) => p.status === 'active');
+  const canDeleteClient = isAdminUser();
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -111,14 +113,16 @@ export function ClientDetailClient({
             >
               Editar datos
             </button>
-            <button
-              type="button"
-              disabled={loading}
-              onClick={handleDelete}
-              className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
-            >
-              Eliminar cliente
-            </button>
+            {canDeleteClient && (
+              <button
+                type="button"
+                disabled={loading}
+                onClick={handleDelete}
+                className="rounded-lg border border-red-200 bg-red-50 px-4 py-2 text-sm font-medium text-red-700 hover:bg-red-100 disabled:opacity-50"
+              >
+                Eliminar cliente
+              </button>
+            )}
           </div>
         )}
       </div>

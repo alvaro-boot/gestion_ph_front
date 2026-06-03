@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
-import { clearAuth, getStoredUser } from '@/lib/auth';
+import { clearAuth, getStoredUser, getToken } from '@/lib/auth';
 import { useEffect, useState } from 'react';
 
 export function Nav() {
@@ -18,6 +18,34 @@ export function Nav() {
   }, [pathname]);
 
   if (pathname === '/login') return null;
+
+  const isConjuntosPublic =
+    pathname === '/conjuntos' || pathname.startsWith('/conjuntos/');
+  const loggedIn = !!getToken();
+
+  if (isConjuntosPublic && !loggedIn) {
+    return (
+      <header className="border-b border-slate-200 bg-white/90 backdrop-blur sticky top-0 z-50">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+          <Link
+            href="/conjuntos"
+            className="flex items-center gap-2 font-semibold text-slate-900"
+          >
+            <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-sm text-white">
+              G
+            </span>
+            Gestion PH · Reporte conjuntos
+          </Link>
+          <Link
+            href="/login"
+            className="rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm font-medium text-indigo-700 hover:bg-indigo-100"
+          >
+            Acceso equipo interno
+          </Link>
+        </div>
+      </header>
+    );
+  }
 
   const baseLinks = [
     { href: '/', label: 'Panel' },

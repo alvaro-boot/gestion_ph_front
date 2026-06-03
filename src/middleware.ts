@@ -12,8 +12,9 @@ export function middleware(request: NextRequest) {
   }
 
   const isLogin = pathname === '/login';
+  const isPublicConjuntos = pathname === '/conjuntos' || pathname.startsWith('/conjuntos/');
 
-  if (!token && !isLogin) {
+  if (!token && !isLogin && !isPublicConjuntos) {
     const url = request.nextUrl.clone();
     url.pathname = '/login';
     url.searchParams.set('from', pathname);

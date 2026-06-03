@@ -256,6 +256,12 @@ export interface Dashboard {
   }>;
 }
 
+export interface ConjuntoPickerItem {
+  id: string;
+  name: string;
+  company: string | null;
+}
+
 export interface ConjuntoReportClient {
   id: string;
   name: string;

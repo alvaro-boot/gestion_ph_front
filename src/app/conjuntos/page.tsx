@@ -3,7 +3,7 @@ import { api } from '@/lib/api';
 import { ConjuntoReportPageClient } from '@/components/ConjuntoReportPageClient';
 
 export default async function ConjuntosPage() {
-  const clients = await api.clients.list();
+  const clients = await api.clients.conjuntoPicker();
 
   return (
     <Suspense

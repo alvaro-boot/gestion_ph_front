@@ -8,6 +8,7 @@ import { api } from '@/lib/api';
 import { StatusBadge } from '@/components/StatusBadge';
 import { FollowUpStatusBadge } from '@/components/FollowUpStatusBadge';
 import { onboardingProcesses } from '@/lib/process-utils';
+import { isAdminUser } from '@/lib/auth';
 
 /** Proceso activo primero; si no hay, el onboarding completado más reciente. */
 function getDisplayProcess(processes?: ClientProcess[]) {
@@ -82,6 +83,7 @@ export function ClientsPageClient({
     phone: '',
     contactName: '',
   });
+  const canDeleteClient = isAdminUser();
 
   useEffect(() => {
     if (initialClients.length > 0 && initialTemplates.length > 0) return;
@@ -400,14 +402,16 @@ export function ClientsPageClient({
                       )}
                     </td>
                     <td className="px-4 py-3 text-right">
-                      <button
-                        type="button"
-                        disabled={loading}
-                        onClick={() => handleDelete(client)}
-                        className="text-xs text-red-600 hover:underline disabled:opacity-50 mb-2 block ml-auto"
-                      >
-                        Eliminar
-                      </button>
+                      {canDeleteClient && (
+                        <button
+                          type="button"
+                          disabled={loading}
+                          onClick={() => handleDelete(client)}
+                          className="text-xs text-red-600 hover:underline disabled:opacity-50 mb-2 block ml-auto"
+                        >
+                          Eliminar
+                        </button>
+                      )}
                       {display?.kind === 'active' ? (
                         <Link
                           href={`/procesos/${display.process.id}`}

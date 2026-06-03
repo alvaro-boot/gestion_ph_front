@@ -58,9 +58,12 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (res.status === 401) {
     if (typeof window !== 'undefined') {
-      const { clearAuth } = await import('./auth');
-      clearAuth();
-      window.location.href = '/login';
+      const onPublicConjuntos = window.location.pathname.startsWith('/conjuntos');
+      if (!onPublicConjuntos) {
+        const { clearAuth } = await import('./auth');
+        clearAuth();
+        window.location.href = '/login';
+      }
     }
     throw new Error('Sesión expirada');
   }
@@ -114,6 +117,8 @@ export const api = {
       }),
     remove: (id: string) =>
       request<{ deleted: boolean }>(`/clients/${id}`, { method: 'DELETE' }),
+    conjuntoPicker: () =>
+      request<import('./types').ConjuntoPickerItem[]>('/clients/conjunto-picker'),
     conjuntoReport: (id: string) =>
       request<import('./types').ConjuntoReport>(`/clients/${id}/conjunto-report`),
   },
