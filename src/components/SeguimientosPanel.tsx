@@ -275,7 +275,9 @@ export function SeguimientosPanel({
                         {item.description && (
                           <p className="text-sm text-slate-600 mt-2">{item.description}</p>
                         )}
-                        {item.nextActionAt && (
+                        {item.nextActionAt &&
+                          new Date(item.nextActionAt).getTime() >
+                            new Date(item.occurredAt).getTime() && (
                           <p className="text-xs text-indigo-600 mt-1">
                             Próximo contacto: {formatDate(item.nextActionAt)}
                           </p>
