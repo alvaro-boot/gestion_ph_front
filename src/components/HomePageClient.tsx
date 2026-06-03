@@ -141,12 +141,14 @@ export function HomePageClient() {
               Clientes agrupados según la etapa actual de su proceso activo.
             </p>
           </div>
-          <Link
-            href="/clientes"
-            className="text-sm font-medium text-indigo-700 hover:underline"
-          >
-            Ver todos los clientes →
-          </Link>
+          <div className="flex flex-wrap gap-3 text-sm font-medium">
+            <Link href="/conjuntos" className="text-indigo-700 hover:underline">
+              Reporte por conjunto →
+            </Link>
+            <Link href="/clientes" className="text-indigo-700 hover:underline">
+              Ver todos los clientes →
+            </Link>
+          </div>
         </div>
 
         {loading ? (
@@ -175,7 +177,7 @@ export function HomePageClient() {
                     >
                       <div className="min-w-0">
                         <Link
-                          href={`/procesos/${item.processId}`}
+                          href={`/conjuntos?clientId=${item.clientId}`}
                           className="font-medium text-indigo-700 hover:underline line-clamp-2"
                         >
                           {item.clientName}

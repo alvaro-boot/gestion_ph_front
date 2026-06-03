@@ -114,6 +114,8 @@ export const api = {
       }),
     remove: (id: string) =>
       request<{ deleted: boolean }>(`/clients/${id}`, { method: 'DELETE' }),
+    conjuntoReport: (id: string) =>
+      request<import('./types').ConjuntoReport>(`/clients/${id}/conjunto-report`),
   },
   templates: {
     list: () => request<import('./types').ProcessTemplate[]>('/process-templates'),

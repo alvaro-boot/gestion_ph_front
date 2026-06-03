@@ -21,6 +21,7 @@ export function Nav() {
 
   const baseLinks = [
     { href: '/', label: 'Panel' },
+    { href: '/conjuntos', label: 'Reporte conjuntos' },
     { href: '/clientes', label: 'Clientes' },
     { href: '/plantillas', label: 'Plantillas' },
   ];
