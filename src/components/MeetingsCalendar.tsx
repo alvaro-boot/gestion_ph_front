@@ -9,7 +9,7 @@ import type {
   CalendarMonthItem,
   CalendarPickerOption,
 } from '@/lib/types';
-import { api } from '@/lib/api';
+import { api, invalidateApiCache } from '@/lib/api';
 import { formatDateTime, toDatetimeLocalValue } from '@/lib/format';
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
@@ -89,13 +89,19 @@ function defaultDatetimeForDay(date: Date) {
 type AddKind = CalendarItemKind;
 
 function itemIsOpen(item: CalendarMonthItem) {
-  if (item.kind === 'meeting') return item.status === 'scheduled';
+  if (item.kind === 'meeting') {
+    if (item.meetingSource === 'followup') return true;
+    return item.status === 'scheduled';
+  }
   return item.status === 'active';
 }
 
 function statusLabel(item: CalendarMonthItem) {
   if (item.status === 'completed') return 'Terminada';
   if (item.status === 'cancelled') return 'Cancelada';
+  if (item.kind === 'meeting' && item.meetingSource === 'followup') {
+    return 'Seguimiento';
+  }
   if (item.kind === 'meeting') return 'Programada';
   return 'Pendiente';
 }
@@ -283,12 +289,13 @@ export function MeetingsCalendar({
     try {
       if (addModal.kind === 'meeting') {
         const opt = pickerOptions.find((p) => p.processId === meetingForm.processKey);
-        if (!opt?.currentStageProgressId) {
-          alert('Selecciona un cliente con proceso activo.');
+        if (!opt) {
+          alert('Selecciona un cliente.');
           return;
         }
         await api.calendar.createMeeting({
-          stageProgressId: opt.currentStageProgressId,
+          processId: opt.processId,
+          stageProgressId: opt.currentStageProgressId ?? undefined,
           title: meetingForm.title,
           scheduledAt: new Date(meetingForm.scheduledAt).toISOString(),
         });
@@ -303,6 +310,7 @@ export function MeetingsCalendar({
         });
       }
       setAddModal(null);
+      invalidateApiCache('/calendar');
       await loadMonth();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error al guardar');
@@ -333,10 +341,16 @@ export function MeetingsCalendar({
     setSaving(true);
     try {
       if (viewItem.kind === 'meeting') {
-        await api.calendar.cancelMeeting(viewItem.id);
+        if (viewItem.meetingSource === 'followup') {
+          await api.seguimientos.remove(viewItem.id);
+        } else {
+          await api.calendar.cancelMeeting(viewItem.id);
+        }
       } else {
         await api.calendar.updateDelivery(viewItem.id, { status: 'cancelled' });
       }
+      invalidateApiCache('/calendar');
+      invalidateApiCache('/clients');
       closeViewItem();
       await loadMonth();
     } catch (err) {
@@ -354,10 +368,16 @@ export function MeetingsCalendar({
     try {
       const iso = new Date(postponeAt).toISOString();
       if (viewItem.kind === 'meeting') {
-        await api.calendar.updateMeeting(viewItem.id, { scheduledAt: iso });
+        if (viewItem.meetingSource === 'followup') {
+          await api.seguimientos.update(viewItem.id, { occurredAt: iso });
+        } else {
+          await api.calendar.updateMeeting(viewItem.id, { scheduledAt: iso });
+        }
       } else {
         await api.calendar.updateDelivery(viewItem.id, { dueAt: iso });
       }
+      invalidateApiCache('/calendar');
+      invalidateApiCache('/clients');
       closeViewItem();
       await loadMonth();
     } catch (err) {
@@ -377,16 +397,26 @@ export function MeetingsCalendar({
     setSaving(true);
     try {
       if (viewItem.kind === 'meeting') {
-        await api.calendar.updateMeeting(viewItem.id, {
-          status: 'completed',
-          notes: completionNotes.trim(),
-        });
+        if (viewItem.meetingSource === 'followup') {
+          const prev = viewItem.description?.trim();
+          const notes = completionNotes.trim();
+          await api.seguimientos.update(viewItem.id, {
+            description: prev ? `${prev}\n\n[Realizada] ${notes}` : `[Realizada] ${notes}`,
+          });
+        } else {
+          await api.calendar.updateMeeting(viewItem.id, {
+            status: 'completed',
+            notes: completionNotes.trim(),
+          });
+        }
       } else {
         await api.calendar.updateDelivery(viewItem.id, {
           status: 'completed',
           completionNotes: completionNotes.trim(),
         });
       }
+      invalidateApiCache('/calendar');
+      invalidateApiCache('/clients');
       closeViewItem();
       await loadMonth();
     } catch (err) {
@@ -582,7 +612,7 @@ export function MeetingsCalendar({
                         <>
                           {pickerOptions.filter((p) => p.processKind === 'onboarding')
                             .length > 0 && (
-                            <optgroup label="Clientes">
+                            <optgroup label="Onboarding en curso">
                               {pickerOptions
                                 .filter((p) => p.processKind === 'onboarding')
                                 .map((p) => (
@@ -591,6 +621,18 @@ export function MeetingsCalendar({
                                     {p.currentStageName
                                       ? ` — ${p.currentStageName}`
                                       : ` — ${p.templateName}`}
+                                  </option>
+                                ))}
+                            </optgroup>
+                          )}
+                          {pickerOptions.filter((p) => p.processKind === 'seguimiento')
+                            .length > 0 && (
+                            <optgroup label="Post-onboarding (seguimientos)">
+                              {pickerOptions
+                                .filter((p) => p.processKind === 'seguimiento')
+                                .map((p) => (
+                                  <option key={p.processId} value={p.processId}>
+                                    {p.clientName} — onboarding completado
                                   </option>
                                 ))}
                             </optgroup>
@@ -828,13 +870,22 @@ export function MeetingsCalendar({
 
             {!viewAction && (
               <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
-                {viewItem.processId && (
+                {viewItem.meetingSource === 'followup' ? (
                   <Link
-                    href={`/procesos/${viewItem.processId}`}
+                    href={`/clientes/${viewItem.clientId}#seguimientos`}
                     className="text-sm text-indigo-600 hover:underline"
                   >
-                    Ver proceso
+                    Ver en seguimientos
                   </Link>
+                ) : (
+                  viewItem.processId && (
+                    <Link
+                      href={`/procesos/${viewItem.processId}`}
+                      className="text-sm text-indigo-600 hover:underline"
+                    >
+                      Ver etapa del proceso
+                    </Link>
+                  )
                 )}
                 {itemIsOpen(viewItem) && (
                   <>

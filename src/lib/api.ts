@@ -229,6 +229,11 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
+    update: (id: string, data: Record<string, unknown>) =>
+      request<import('./types').FollowUp>(`/seguimientos/${id}`, {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      }),
     remove: (id: string) =>
       request(`/seguimientos/${id}`, { method: 'DELETE' }),
   },

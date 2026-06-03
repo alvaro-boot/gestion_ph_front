@@ -160,6 +160,7 @@ export interface CalendarMonthItem {
   stageProgressId?: string | null;
   description?: string | null;
   processKind?: 'onboarding' | 'seguimiento';
+  meetingSource?: 'stage' | 'followup';
   notes?: string | null;
   completionNotes?: string | null;
 }

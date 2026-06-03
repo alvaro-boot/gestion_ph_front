@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { ClientProcess, FollowUp, StageProgress } from '@/lib/types';
 import { SeguimientosPanel } from '@/components/SeguimientosPanel';
-import { api } from '@/lib/api';
+import { api, invalidateApiCache } from '@/lib/api';
 import { StageTimeline } from '@/components/StageTimeline';
 import { StatusBadge } from '@/components/StatusBadge';
 import {
@@ -154,11 +154,14 @@ export function ProcessDetailClient({
     if (!current) return;
     setLoading(true);
     try {
-      await api.meetings.create({
+      await api.calendar.createMeeting({
+        processId: process.id,
         stageProgressId: current.id,
         title: meetingForm.title,
         scheduledAt: new Date(meetingForm.scheduledAt).toISOString(),
       });
+      invalidateApiCache('/calendar');
+      invalidateApiCache('/client-processes');
       setMeetingForm({ title: '', scheduledAt: '' });
       setShowMeetingForm(false);
       const updated = await api.processes.get(process.id);
