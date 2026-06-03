@@ -23,28 +23,45 @@ const KIND_LABELS: Record<CalendarItemKind, string> = {
   meeting: 'Reunión',
   client_delivery: 'Entrega del cliente',
   internal_delivery: 'Nuestra entrega',
+  next_contact: 'Próximo contacto',
 };
 
-const KIND_STYLES: Record<CalendarItemKind, string> = {
-  meeting: 'bg-indigo-100 border-indigo-300 text-indigo-950 hover:bg-indigo-200',
+const KIND_STYLES: Record<Exclude<CalendarItemKind, 'meeting' | 'next_contact'>, string> = {
   client_delivery: 'bg-amber-100 border-amber-300 text-amber-950 hover:bg-amber-200',
   internal_delivery:
     'bg-emerald-100 border-emerald-300 text-emerald-950 hover:bg-emerald-200',
 };
 
+const MEETING_ONBOARDING_STYLE =
+  'bg-indigo-100 border-indigo-300 text-indigo-950 hover:bg-indigo-200';
 const MEETING_SEGUIMIENTO_STYLE =
   'bg-violet-100 border-violet-300 text-violet-950 hover:bg-violet-200';
+const NEXT_CONTACT_STYLE =
+  'bg-sky-100 border-sky-300 text-sky-950 hover:bg-sky-200';
+const NEXT_CONTACT_OVERDUE_STYLE =
+  'bg-rose-100 border-rose-400 text-rose-950 hover:bg-rose-200';
 
-function meetingItemStyle(item: CalendarMonthItem) {
-  if (item.kind !== 'meeting') return KIND_STYLES[item.kind];
-  return item.processKind === 'seguimiento' ? MEETING_SEGUIMIENTO_STYLE : KIND_STYLES.meeting;
+function calendarChipStyle(item: CalendarMonthItem) {
+  if (item.kind === 'next_contact') {
+    return item.status === 'overdue'
+      ? NEXT_CONTACT_OVERDUE_STYLE
+      : NEXT_CONTACT_STYLE;
+  }
+  if (item.kind === 'meeting') {
+    return item.processKind === 'seguimiento'
+      ? MEETING_SEGUIMIENTO_STYLE
+      : MEETING_ONBOARDING_STYLE;
+  }
+  return KIND_STYLES[item.kind];
 }
 
-const LEGEND_DOT: Record<CalendarItemKind, string> = {
-  meeting: 'bg-indigo-500',
-  client_delivery: 'bg-amber-500',
-  internal_delivery: 'bg-emerald-500',
-};
+const LEGEND_ITEMS: { kind: CalendarItemKind; dot: string; label: string }[] = [
+  { kind: 'meeting', dot: 'bg-indigo-500', label: 'Reunión onboarding' },
+  { kind: 'meeting', dot: 'bg-violet-500', label: 'Reunión seguimiento' },
+  { kind: 'client_delivery', dot: 'bg-amber-500', label: 'Entrega del cliente' },
+  { kind: 'internal_delivery', dot: 'bg-emerald-500', label: 'Nuestra entrega' },
+  { kind: 'next_contact', dot: 'bg-sky-500', label: 'Próximo contacto' },
+];
 
 function dateKey(d: Date) {
   const y = d.getFullYear();
@@ -89,6 +106,7 @@ function defaultDatetimeForDay(date: Date) {
 type AddKind = CalendarItemKind;
 
 function itemIsOpen(item: CalendarMonthItem) {
+  if (item.kind === 'next_contact') return true;
   if (item.kind === 'meeting') {
     if (item.meetingSource === 'followup') return true;
     return item.status === 'scheduled';
@@ -97,6 +115,9 @@ function itemIsOpen(item: CalendarMonthItem) {
 }
 
 function statusLabel(item: CalendarMonthItem) {
+  if (item.kind === 'next_contact') {
+    return item.status === 'overdue' ? 'Vencido' : 'Pendiente';
+  }
   if (item.status === 'completed') return 'Terminada';
   if (item.status === 'cancelled') return 'Cancelada';
   if (item.kind === 'meeting' && item.meetingSource === 'followup') {
@@ -104,6 +125,22 @@ function statusLabel(item: CalendarMonthItem) {
   }
   if (item.kind === 'meeting') return 'Programada';
   return 'Pendiente';
+}
+
+function chipPrimaryLine(item: CalendarMonthItem) {
+  if (item.kind === 'next_contact') {
+    return item.clientName;
+  }
+  return item.title;
+}
+
+function chipSecondaryLine(item: CalendarMonthItem) {
+  if (item.kind === 'next_contact') {
+    const prefix =
+      item.status === 'overdue' ? 'Vencido · ' : 'Próximo · ';
+    return `${prefix}${item.title}`;
+  }
+  return item.clientName;
 }
 
 type ViewAction = 'postpone' | 'complete' | null;
@@ -255,8 +292,15 @@ export function MeetingsCalendar({
   const grid = useMemo(() => buildMonthGrid(year, month), [year, month]);
 
   const counts = useMemo(() => {
-    const c = { meeting: 0, client_delivery: 0, internal_delivery: 0 };
-    for (const i of items) c[i.kind]++;
+    const c = {
+      meeting: 0,
+      client_delivery: 0,
+      internal_delivery: 0,
+      next_contact: 0,
+    };
+    for (const i of items) {
+      if (i.kind in c) c[i.kind as keyof typeof c]++;
+    }
     return c;
   }, [items]);
 
@@ -322,7 +366,8 @@ export function MeetingsCalendar({
   function openViewItem(item: CalendarMonthItem) {
     setViewItem(item);
     setViewAction(null);
-    setPostponeAt(toDatetimeLocalValue(new Date(item.at)));
+    const when = item.scheduledAt ?? item.at;
+    setPostponeAt(toDatetimeLocalValue(new Date(when)));
     setCompletionNotes('');
   }
 
@@ -335,12 +380,18 @@ export function MeetingsCalendar({
   async function handleCancelItem() {
     if (!viewItem) return;
     const label =
-      viewItem.kind === 'meeting' ? '¿Cancelar esta reunión?' : '¿Cancelar esta entrega?';
+      viewItem.kind === 'next_contact'
+        ? '¿Quitar este próximo contacto del calendario?'
+        : viewItem.kind === 'meeting'
+          ? '¿Cancelar esta reunión?'
+          : '¿Cancelar esta entrega?';
     if (!confirm(label)) return;
 
     setSaving(true);
     try {
-      if (viewItem.kind === 'meeting') {
+      if (viewItem.kind === 'next_contact') {
+        await api.seguimientos.update(viewItem.id, { nextActionAt: null });
+      } else if (viewItem.kind === 'meeting') {
         if (viewItem.meetingSource === 'followup') {
           await api.seguimientos.remove(viewItem.id);
         } else {
@@ -351,6 +402,7 @@ export function MeetingsCalendar({
       }
       invalidateApiCache('/calendar');
       invalidateApiCache('/clients');
+      invalidateApiCache('/seguimientos');
       closeViewItem();
       await loadMonth();
     } catch (err) {
@@ -367,7 +419,9 @@ export function MeetingsCalendar({
     setSaving(true);
     try {
       const iso = new Date(postponeAt).toISOString();
-      if (viewItem.kind === 'meeting') {
+      if (viewItem.kind === 'next_contact') {
+        await api.seguimientos.update(viewItem.id, { nextActionAt: iso });
+      } else if (viewItem.kind === 'meeting') {
         if (viewItem.meetingSource === 'followup') {
           await api.seguimientos.update(viewItem.id, { occurredAt: iso });
         } else {
@@ -378,6 +432,7 @@ export function MeetingsCalendar({
       }
       invalidateApiCache('/calendar');
       invalidateApiCache('/clients');
+      invalidateApiCache('/seguimientos');
       closeViewItem();
       await loadMonth();
     } catch (err) {
@@ -396,7 +451,16 @@ export function MeetingsCalendar({
 
     setSaving(true);
     try {
-      if (viewItem.kind === 'meeting') {
+      if (viewItem.kind === 'next_contact') {
+        const prev = viewItem.description?.trim();
+        const notes = completionNotes.trim();
+        await api.seguimientos.update(viewItem.id, {
+          nextActionAt: null,
+          description: prev
+            ? `${prev}\n\n[Contacto realizado] ${notes}`
+            : `[Contacto realizado] ${notes}`,
+        });
+      } else if (viewItem.kind === 'meeting') {
         if (viewItem.meetingSource === 'followup') {
           const prev = viewItem.description?.trim();
           const notes = completionNotes.trim();
@@ -417,6 +481,7 @@ export function MeetingsCalendar({
       }
       invalidateApiCache('/calendar');
       invalidateApiCache('/clients');
+      invalidateApiCache('/seguimientos');
       closeViewItem();
       await loadMonth();
     } catch (err) {
@@ -438,23 +503,25 @@ export function MeetingsCalendar({
           <p className="text-sm text-slate-500 mt-0.5">
             {items.length} evento{items.length === 1 ? '' : 's'} este mes
           </p>
-          <div className="flex flex-wrap gap-3 mt-2 text-xs">
-            <span className="inline-flex items-center gap-1.5 text-slate-600">
-              <span className="h-2.5 w-2.5 rounded-full bg-indigo-500" />
-              Reunión onboarding ({counts.meeting})
-            </span>
-            <span className="inline-flex items-center gap-1.5 text-slate-600">
-              <span className="h-2.5 w-2.5 rounded-full bg-violet-500" />
-              Reunión seguimiento
-            </span>
-            {(Object.keys(KIND_LABELS) as CalendarItemKind[])
-              .filter((k) => k !== 'meeting')
-              .map((k) => (
-                <span key={k} className="inline-flex items-center gap-1.5 text-slate-600">
-                  <span className={`h-2.5 w-2.5 rounded-full ${LEGEND_DOT[k]}`} />
-                  {KIND_LABELS[k]} ({counts[k]})
-                </span>
-              ))}
+          <div className="flex flex-wrap gap-x-4 gap-y-2 mt-2 text-sm">
+            {LEGEND_ITEMS.map((leg) => (
+              <span
+                key={leg.label}
+                className="inline-flex items-center gap-2 text-slate-600"
+              >
+                <span className={`h-3 w-3 rounded-full shrink-0 ${leg.dot}`} />
+                {leg.label}
+                {leg.kind === 'meeting' && leg.dot.includes('indigo')
+                  ? ` (${counts.meeting})`
+                  : leg.kind === 'client_delivery'
+                    ? ` (${counts.client_delivery})`
+                    : leg.kind === 'internal_delivery'
+                      ? ` (${counts.internal_delivery})`
+                      : leg.kind === 'next_contact'
+                        ? ` (${counts.next_contact})`
+                        : ''}
+              </span>
+            ))}
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -496,44 +563,46 @@ export function MeetingsCalendar({
       )}
 
       <div
-        className={`p-4 ${loadingMonth ? 'opacity-50 pointer-events-none' : ''}`}
+        className={`p-5 sm:p-6 ${loadingMonth ? 'opacity-50 pointer-events-none' : ''}`}
       >
-        <div className="grid grid-cols-7 gap-px bg-slate-200 rounded-lg overflow-hidden border border-slate-200">
+        <div className="grid grid-cols-7 gap-1 bg-slate-200 rounded-xl overflow-hidden border border-slate-200">
           {WEEKDAYS.map((wd) => (
             <div
               key={wd}
-              className="bg-slate-100 px-1 py-2 text-center text-xs font-semibold text-slate-600"
+              className="bg-slate-100 px-2 py-3 text-center text-sm font-semibold text-slate-600"
             >
               {wd}
             </div>
           ))}
           {grid.map((cell, i) => {
             if (!cell.date) {
-              return <div key={`empty-${i}`} className="min-h-[6.5rem] bg-slate-50/80" />;
+              return (
+                <div key={`empty-${i}`} className="min-h-[11rem] bg-slate-50/80" />
+              );
             }
             const key = dateKey(cell.date);
             const dayItems = byDay.get(key) ?? [];
             return (
               <div
                 key={key}
-                className={`min-h-[6.5rem] bg-white p-1 flex flex-col group ${
+                className={`min-h-[11rem] bg-white p-2 flex flex-col group ${
                   cell.isToday ? 'ring-2 ring-inset ring-indigo-400' : ''
                 }`}
               >
-                <div className="flex items-center justify-between mb-0.5">
+                <div className="flex items-center justify-between mb-1 shrink-0">
                   <span
-                    className={`text-xs font-semibold w-6 h-6 flex items-center justify-center rounded-full ${
+                    className={`text-sm font-semibold w-7 h-7 flex items-center justify-center rounded-full ${
                       cell.isToday ? 'bg-indigo-600 text-white' : 'text-slate-700'
                     }`}
                   >
                     {cell.day}
                   </span>
-                  <div className="opacity-0 group-hover:opacity-100 flex gap-0.5">
+                  <div className="opacity-0 group-hover:opacity-100 flex gap-1">
                     <button
                       type="button"
                       title="Reunión"
                       onClick={() => openAdd('meeting', cell.date!)}
-                      className="h-5 w-5 rounded text-[10px] bg-indigo-500 text-white hover:bg-indigo-600"
+                      className="h-6 w-6 rounded text-xs font-medium bg-indigo-500 text-white hover:bg-indigo-600"
                     >
                       R
                     </button>
@@ -541,7 +610,7 @@ export function MeetingsCalendar({
                       type="button"
                       title="Entrega cliente"
                       onClick={() => openAdd('client_delivery', cell.date!)}
-                      className="h-5 w-5 rounded text-[10px] bg-amber-500 text-white hover:bg-amber-600"
+                      className="h-6 w-6 rounded text-xs font-medium bg-amber-500 text-white hover:bg-amber-600"
                     >
                       C
                     </button>
@@ -549,25 +618,31 @@ export function MeetingsCalendar({
                       type="button"
                       title="Nuestra entrega"
                       onClick={() => openAdd('internal_delivery', cell.date!)}
-                      className="h-5 w-5 rounded text-[10px] bg-emerald-500 text-white hover:bg-emerald-600"
+                      className="h-6 w-6 rounded text-xs font-medium bg-emerald-500 text-white hover:bg-emerald-600"
                     >
                       N
                     </button>
                   </div>
                 </div>
-                <ul className="flex-1 space-y-0.5 overflow-y-auto max-h-28">
+                <ul className="flex-1 space-y-1 overflow-y-auto min-h-0">
                   {dayItems.map((item) => (
-                    <li key={`${item.kind}-${item.id}`}>
+                    <li key={`${item.kind}-${item.id}-${item.at}`}>
                       <button
                         type="button"
                         onClick={() => openViewItem(item)}
-                        className={`w-full text-left rounded px-1 py-0.5 text-[10px] leading-tight border ${meetingItemStyle(item)} ${
+                        className={`w-full text-left rounded-md px-2 py-1.5 text-xs leading-snug border ${calendarChipStyle(item)} ${
                           item.status === 'completed' ? 'opacity-60 line-through' : ''
                         }`}
                       >
-                        <span className="font-medium">{formatTime(item.at)}</span>
-                        <span className="line-clamp-1 opacity-90">{item.clientName}</span>
-                        <span className="line-clamp-1">{item.title}</span>
+                        <span className="block font-semibold tabular-nums">
+                          {formatTime(item.at)}
+                        </span>
+                        <span className="block font-medium line-clamp-2 break-words">
+                          {chipPrimaryLine(item)}
+                        </span>
+                        <span className="block opacity-90 line-clamp-2 break-words mt-0.5">
+                          {chipSecondaryLine(item)}
+                        </span>
                       </button>
                     </li>
                   ))}
@@ -780,22 +855,38 @@ export function MeetingsCalendar({
 
       {viewItem && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
-          <div className="bg-white rounded-xl shadow-xl max-w-md w-full p-5 max-h-[90vh] overflow-y-auto">
+          <div className="bg-white rounded-xl shadow-xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
             <span
-              className={`inline-block text-xs font-medium px-2 py-0.5 rounded-full mb-2 ${meetingItemStyle(viewItem)}`}
+              className={`inline-block text-sm font-medium px-2.5 py-1 rounded-full mb-3 ${calendarChipStyle(viewItem)}`}
             >
               {viewItem.kind === 'meeting' && viewItem.processKind === 'seguimiento'
                 ? 'Reunión · Seguimiento'
                 : KIND_LABELS[viewItem.kind]}
             </span>
-            <div className="flex items-start justify-between gap-2">
-              <h3 className="font-semibold text-slate-900">{viewItem.title}</h3>
-              <span className="text-xs font-medium text-slate-500 shrink-0">
+            <div className="flex items-start justify-between gap-3">
+              <h3 className="text-lg font-semibold text-slate-900 leading-snug">
+                {viewItem.kind === 'next_contact'
+                  ? `Próximo contacto · ${viewItem.clientName}`
+                  : viewItem.title}
+              </h3>
+              <span className="text-sm font-medium text-slate-500 shrink-0">
                 {statusLabel(viewItem)}
               </span>
             </div>
-            <p className="text-sm text-slate-600 mt-1">{viewItem.clientName}</p>
-            <p className="text-sm text-slate-500 mt-2">{formatDateTime(viewItem.at)}</p>
+            {viewItem.kind !== 'next_contact' && (
+              <p className="text-base text-slate-600 mt-1">{viewItem.clientName}</p>
+            )}
+            {viewItem.kind === 'next_contact' && (
+              <p className="text-base text-slate-700 mt-2">{viewItem.title}</p>
+            )}
+            <p className="text-base text-slate-500 mt-2">{formatDateTime(viewItem.at)}</p>
+            {viewItem.kind === 'next_contact' &&
+              viewItem.scheduledAt &&
+              viewItem.scheduledAt !== viewItem.at && (
+                <p className="text-sm text-rose-700 mt-1">
+                  Compromiso original: {formatDateTime(viewItem.scheduledAt)}
+                </p>
+              )}
             {viewItem.description && (
               <p className="text-sm text-slate-600 mt-2">
                 <span className="font-medium text-slate-700">Detalle: </span>
@@ -811,7 +902,11 @@ export function MeetingsCalendar({
 
             {viewAction === 'postpone' && itemIsOpen(viewItem) && (
               <form onSubmit={handlePostponeItem} className="mt-4 space-y-3 border-t pt-4">
-                <p className="text-sm font-medium text-slate-800">Aplazar evento</p>
+                <p className="text-sm font-medium text-slate-800">
+                  {viewItem.kind === 'next_contact'
+                    ? 'Reprogramar próximo contacto'
+                    : 'Aplazar evento'}
+                </p>
                 <input
                   required
                   type="datetime-local"
@@ -840,12 +935,20 @@ export function MeetingsCalendar({
 
             {viewAction === 'complete' && itemIsOpen(viewItem) && (
               <form onSubmit={handleCompleteItem} className="mt-4 space-y-3 border-t pt-4">
-                <p className="text-sm font-medium text-slate-800">Terminar con notas</p>
+                <p className="text-sm font-medium text-slate-800">
+                  {viewItem.kind === 'next_contact'
+                    ? 'Registrar contacto realizado'
+                    : 'Terminar con notas'}
+                </p>
                 <textarea
                   required
                   rows={3}
                   className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                  placeholder="¿Qué se hizo? Resultado, acuerdos, pendientes…"
+                  placeholder={
+                    viewItem.kind === 'next_contact'
+                      ? 'Resumen del contacto con el cliente…'
+                      : '¿Qué se hizo? Resultado, acuerdos, pendientes…'
+                  }
                   value={completionNotes}
                   onChange={(e) => setCompletionNotes(e.target.value)}
                 />
@@ -855,7 +958,9 @@ export function MeetingsCalendar({
                     disabled={saving}
                     className="rounded-lg bg-emerald-600 px-4 py-2 text-sm text-white hover:bg-emerald-700 disabled:opacity-50"
                   >
-                    Marcar como terminada
+                    {viewItem.kind === 'next_contact'
+                      ? 'Marcar como realizado'
+                      : 'Marcar como terminada'}
                   </button>
                   <button
                     type="button"
@@ -870,7 +975,14 @@ export function MeetingsCalendar({
 
             {!viewAction && (
               <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
-                {viewItem.meetingSource === 'followup' ? (
+                {viewItem.kind === 'next_contact' ? (
+                  <Link
+                    href={`/clientes/${viewItem.clientId}#seguimientos`}
+                    className="text-sm text-indigo-600 hover:underline"
+                  >
+                    Ver ficha del cliente
+                  </Link>
+                ) : viewItem.meetingSource === 'followup' ? (
                   <Link
                     href={`/clientes/${viewItem.clientId}#seguimientos`}
                     className="text-sm text-indigo-600 hover:underline"
@@ -895,7 +1007,7 @@ export function MeetingsCalendar({
                       onClick={() => setViewAction('postpone')}
                       className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                     >
-                      Aplazar
+                      {viewItem.kind === 'next_contact' ? 'Reprogramar' : 'Aplazar'}
                     </button>
                     <button
                       type="button"
@@ -903,16 +1015,28 @@ export function MeetingsCalendar({
                       onClick={() => setViewAction('complete')}
                       className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-sm text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
                     >
-                      Terminar
+                      {viewItem.kind === 'next_contact' ? 'Realizado' : 'Terminar'}
                     </button>
-                    <button
-                      type="button"
-                      disabled={saving}
-                      onClick={handleCancelItem}
-                      className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm text-red-700 hover:bg-red-100 disabled:opacity-50"
-                    >
-                      Cancelar
-                    </button>
+                    {viewItem.kind !== 'next_contact' && (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={handleCancelItem}
+                        className="rounded-lg border border-red-200 bg-red-50 px-3 py-1.5 text-sm text-red-700 hover:bg-red-100 disabled:opacity-50"
+                      >
+                        Cancelar
+                      </button>
+                    )}
+                    {viewItem.kind === 'next_contact' && (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={handleCancelItem}
+                        className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-100 disabled:opacity-50"
+                      >
+                        Quitar del calendario
+                      </button>
+                    )}
                   </>
                 )}
                 <button

@@ -146,7 +146,11 @@ export interface User {
   createdAt?: string;
 }
 
-export type CalendarItemKind = 'meeting' | 'client_delivery' | 'internal_delivery';
+export type CalendarItemKind =
+  | 'meeting'
+  | 'client_delivery'
+  | 'internal_delivery'
+  | 'next_contact';
 
 export interface CalendarMonthItem {
   id: string;
@@ -163,6 +167,8 @@ export interface CalendarMonthItem {
   meetingSource?: 'stage' | 'followup';
   notes?: string | null;
   completionNotes?: string | null;
+  /** Fecha original del compromiso si se muestra al inicio del mes por vencido */
+  scheduledAt?: string | null;
 }
 
 export interface CalendarPickerOption {

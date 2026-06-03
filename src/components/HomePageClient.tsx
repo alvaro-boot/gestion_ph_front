@@ -130,7 +130,7 @@ export function HomePageClient() {
           initialMonth={month}
         />
       ) : (
-        <div className="rounded-xl border border-slate-200 bg-white h-96 animate-pulse" />
+        <div className="rounded-xl border border-slate-200 bg-white min-h-[28rem] animate-pulse" />
       )}
 
       <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
