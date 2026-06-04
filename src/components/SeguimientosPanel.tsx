@@ -102,11 +102,11 @@ export function SeguimientosPanel({
     try {
       await api.clients.update(clientId, {
         nextContactAt: clear
-          ? ''
+          ? null
           : nextContact.at
             ? new Date(nextContact.at).toISOString()
-            : '',
-        nextContactTitle: clear ? '' : nextContact.title.trim(),
+            : null,
+        nextContactTitle: clear ? null : nextContact.title.trim() || null,
       });
       if (clear) {
         setNextContact({ at: '', title: '' });

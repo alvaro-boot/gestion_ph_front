@@ -171,6 +171,8 @@ export interface CalendarMonthItem {
   completionNotes?: string | null;
   /** Fecha original del compromiso si se muestra al inicio del mes por vencido */
   scheduledAt?: string | null;
+  /** Próximo contacto del conjunto vs. compromiso en un seguimiento (legacy nextActionAt). */
+  nextContactSource?: 'client' | 'followup';
 }
 
 export interface CalendarPickerOption {

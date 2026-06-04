@@ -105,6 +105,14 @@ function defaultDatetimeForDay(date: Date) {
 
 type AddKind = CalendarItemKind;
 
+function isClientNextContact(item: CalendarMonthItem) {
+  return item.kind === 'next_contact' && item.nextContactSource !== 'followup';
+}
+
+function isFollowUpPlannedContact(item: CalendarMonthItem) {
+  return item.kind === 'next_contact' && item.nextContactSource === 'followup';
+}
+
 function itemIsOpen(item: CalendarMonthItem) {
   if (item.kind === 'next_contact') return item.status !== 'completed';
   if (item.kind === 'meeting') {
@@ -395,10 +403,14 @@ export function MeetingsCalendar({
     setSaving(true);
     try {
       if (viewItem.kind === 'next_contact') {
-        await api.clients.update(viewItem.clientId, {
-          nextContactAt: '',
-          nextContactTitle: '',
-        });
+        if (isFollowUpPlannedContact(viewItem)) {
+          await api.seguimientos.update(viewItem.id, { nextActionAt: null });
+        } else {
+          await api.clients.update(viewItem.clientId, {
+            nextContactAt: null,
+            nextContactTitle: null,
+          });
+        }
       } else if (viewItem.kind === 'meeting') {
         if (viewItem.meetingSource === 'followup') {
           await api.seguimientos.remove(viewItem.id);
@@ -428,9 +440,13 @@ export function MeetingsCalendar({
     try {
       const iso = new Date(postponeAt).toISOString();
       if (viewItem.kind === 'next_contact') {
-        await api.clients.update(viewItem.clientId, {
-          nextContactAt: iso,
-        });
+        if (isFollowUpPlannedContact(viewItem)) {
+          await api.seguimientos.update(viewItem.id, { nextActionAt: iso });
+        } else {
+          await api.clients.update(viewItem.clientId, {
+            nextContactAt: iso,
+          });
+        }
       } else if (viewItem.kind === 'meeting') {
         if (viewItem.meetingSource === 'followup') {
           await api.seguimientos.update(viewItem.id, { occurredAt: iso });
@@ -471,10 +487,14 @@ export function MeetingsCalendar({
           occurredAt: new Date().toISOString(),
           clientProcessId: viewItem.processId ?? undefined,
         });
-        await api.clients.update(viewItem.clientId, {
-          nextContactAt: '',
-          nextContactTitle: '',
-        });
+        if (isFollowUpPlannedContact(viewItem)) {
+          await api.seguimientos.update(viewItem.id, { nextActionAt: null });
+        } else {
+          await api.clients.update(viewItem.clientId, {
+            nextContactAt: null,
+            nextContactTitle: null,
+          });
+        }
       } else if (viewItem.kind === 'meeting') {
         if (viewItem.meetingSource === 'followup') {
           const notes = completionNotes.trim();
