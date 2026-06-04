@@ -5,6 +5,14 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001/api';
 const getCache = new Map<string, { expires: number; data: unknown }>();
 const GET_CACHE_MS = 30_000;
 
+/** GET que siempre debe ir al servidor (evita seguimientos/reportes desactualizados). */
+function shouldCacheGet(path: string): boolean {
+  if (path.includes('conjunto-report')) return false;
+  if (path.includes('/seguimientos')) return false;
+  if (/^\/clients\/[^/?]+$/.test(path.split('?')[0] ?? path)) return false;
+  return true;
+}
+
 export function invalidateApiCache(prefix?: string) {
   if (!prefix) {
     getCache.clear();
@@ -26,7 +34,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const method = (init?.method ?? 'GET').toUpperCase();
   const isServer = typeof window === 'undefined';
 
-  if (!isServer && method === 'GET') {
+  if (!isServer && method === 'GET' && shouldCacheGet(path)) {
     const hit = getCache.get(path);
     if (hit && hit.expires > Date.now()) {
       return hit.data as T;
@@ -80,8 +88,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(message);
   }
   const data = (await res.json()) as T;
-  if (!isServer && method === 'GET') {
+  if (!isServer && method === 'GET' && shouldCacheGet(path)) {
     getCache.set(path, { data, expires: Date.now() + GET_CACHE_MS });
+  }
+  if (!isServer && method !== 'GET') {
+    invalidateApiCache();
   }
   return data;
 }

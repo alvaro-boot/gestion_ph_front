@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import type { Client, ClientUpdateLog } from '@/lib/types';
-import { api } from '@/lib/api';
+import { api, invalidateApiCache } from '@/lib/api';
 import { formatDate, formatDateTime } from '@/lib/format';
 import { StatusBadge } from '@/components/StatusBadge';
 import { SeguimientosPanel } from '@/components/SeguimientosPanel';
@@ -36,6 +36,22 @@ export function ClientDetailClient({
   );
   const activeProcess = processes.find((p) => p.status === 'active');
   const canDeleteClient = isAdminUser();
+
+  useEffect(() => {
+    setClient(initialClient);
+  }, [initialClient]);
+
+  async function refreshClientData() {
+    invalidateApiCache('/clients');
+    invalidateApiCache('/seguimientos');
+    try {
+      const updated = await api.clients.get(client.id);
+      setClient(updated);
+      router.refresh();
+    } catch {
+      router.refresh();
+    }
+  }
 
   async function handleSave(e: React.FormEvent) {
     e.preventDefault();
@@ -332,6 +348,7 @@ export function ClientDetailClient({
             activeProcess?.stageProgresses?.find((s) => s.status === 'in_progress')
               ?.stageTemplate?.name
           }
+          onDataChange={refreshClientData}
         />
       )}
     </div>

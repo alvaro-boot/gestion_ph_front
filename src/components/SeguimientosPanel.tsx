@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useRouter } from 'next/navigation';
 import type { ClientProcess, FollowUp, FollowUpType } from '@/lib/types';
 import { api, invalidateApiCache } from '@/lib/api';
 import {
@@ -32,6 +31,7 @@ export function SeguimientosPanel({
   processes,
   defaultProcessId,
   currentStageName,
+  onDataChange,
 }: {
   clientId: string;
   clientName: string;
@@ -42,8 +42,8 @@ export function SeguimientosPanel({
   defaultProcessId?: string;
   /** Etapa en curso (solo durante onboarding activo). */
   currentStageName?: string;
+  onDataChange?: () => void | Promise<void>;
 }) {
-  const router = useRouter();
   const [items, setItems] = useState(initialItems);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -53,6 +53,7 @@ export function SeguimientosPanel({
   useEffect(() => {
     let cancelled = false;
     setListLoading(true);
+    invalidateApiCache('/seguimientos');
     api.seguimientos
       .list(clientId)
       .then((data) => {
@@ -81,6 +82,13 @@ export function SeguimientosPanel({
     title: initialNextContactTitle ?? '',
   });
 
+  useEffect(() => {
+    setNextContact({
+      at: toDatetimeLocalValue(initialNextContactAt),
+      title: initialNextContactTitle ?? '',
+    });
+  }, [initialNextContactAt, initialNextContactTitle]);
+
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -105,12 +113,21 @@ export function SeguimientosPanel({
       }
       invalidateApiCache('/clients');
       invalidateApiCache('/calendar');
-      router.refresh();
+      invalidateApiCache('/seguimientos');
+      await onDataChange?.();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error al guardar');
     } finally {
       setLoading(false);
     }
+  }
+
+  async function reloadSeguimientos() {
+    invalidateApiCache('/seguimientos');
+    invalidateApiCache('/clients');
+    const refreshed = await api.seguimientos.list(clientId);
+    setItems(refreshed);
+    await onDataChange?.();
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -126,8 +143,6 @@ export function SeguimientosPanel({
         occurredAt: new Date(form.occurredAt).toISOString(),
         clientProcessId: form.clientProcessId || undefined,
       });
-      const refreshed = await api.seguimientos.list(clientId);
-      setItems(refreshed);
       setForm({
         title: '',
         description: '',
@@ -136,7 +151,7 @@ export function SeguimientosPanel({
         clientProcessId: defaultProcess?.id ?? '',
       });
       setShowForm(false);
-      router.refresh();
+      await reloadSeguimientos();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error al guardar');
     } finally {
@@ -149,9 +164,7 @@ export function SeguimientosPanel({
     setLoading(true);
     try {
       await api.seguimientos.remove(id);
-      const refreshed = await api.seguimientos.list(clientId);
-      setItems(refreshed);
-      router.refresh();
+      await reloadSeguimientos();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error');
     } finally {

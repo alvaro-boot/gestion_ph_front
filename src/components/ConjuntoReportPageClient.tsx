@@ -4,10 +4,9 @@ import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { ConjuntoPickerItem, ConjuntoReport } from '@/lib/types';
-import { api } from '@/lib/api';
+import { api, invalidateApiCache } from '@/lib/api';
 import { getToken } from '@/lib/auth';
 import {
-  conjuntoMeetingStatusLabel,
   followUpTypeLabels,
   formatDate,
   formatDateTime,
@@ -21,13 +20,6 @@ import { FollowUpDescription } from '@/components/FollowUpDescription';
 const DELIVERY_LABELS: Record<string, string> = {
   client_delivery: 'Entrega del cliente',
   internal_delivery: 'Nuestra entrega',
-};
-
-const ACTIVITY_LABELS: Record<string, string> = {
-  meeting: 'Reunión',
-  call: 'Llamada',
-  visit: 'Visita',
-  other: 'Contacto',
 };
 
 function clientLabel(c: ConjuntoPickerItem) {
@@ -79,6 +71,7 @@ export function ConjuntoReportPageClient({
     setReport(null);
     setLoading(true);
     setError(null);
+    invalidateApiCache('/clients');
 
     api.clients
       .conjuntoReport(selectedId)
@@ -126,8 +119,8 @@ export function ConjuntoReportPageClient({
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Reporte del conjunto</h1>
         <p className="mt-1 text-slate-600 max-w-2xl">
-          Vista para el encargado: etapa del onboarding, último seguimiento, reuniones
-          planeadas, plazos de entrega y entregas pendientes.
+          Vista para el encargado: etapa del onboarding, últimos seguimientos,
+          plazos de entrega y entregas pendientes.
         </p>
       </div>
 
@@ -244,50 +237,27 @@ export function ConjuntoReportPageClient({
 
           <div className="grid gap-6 lg:grid-cols-2">
             <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm lg:col-span-2">
-              <h3 className="text-lg font-semibold text-slate-900">Seguimiento</h3>
+              <h3 className="text-lg font-semibold text-slate-900">Seguimientos</h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Solo los 3 registros más recientes (sin reuniones del calendario).
+              </p>
               <div className="mt-4 flex flex-wrap items-center gap-4">
                 <FollowUpStatusBadge
                   summary={report.followUpSummary}
                   hasProcess={!!report.process}
                 />
-                <span className="text-sm text-slate-600">
-                  {report.followUpSummary.totalFollowUps} seguimiento
-                  {report.followUpSummary.totalFollowUps === 1 ? '' : 's'} registrado
-                  {report.followUpSummary.totalFollowUps === 1 ? '' : 's'}
-                </span>
-              </div>
-
-              {report.lastFollowUp ? (
-                <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50/80 p-4">
-                  <p className="text-xs font-semibold uppercase text-slate-500">
-                    Último seguimiento
-                  </p>
-                  <p className="font-semibold text-slate-900 mt-1">
-                    {report.lastFollowUp.title}
-                  </p>
-                  <p className="text-sm text-slate-600 mt-1">
-                    {followUpTypeLabels[report.lastFollowUp.followUpType] ?? 'Seguimiento'}{' '}
-                    · {formatDateTime(report.lastFollowUp.occurredAt)}
-                    {report.lastFollowUp.stageName && (
-                      <> · Etapa: {report.lastFollowUp.stageName}</>
-                    )}
-                  </p>
-                  {report.lastFollowUp.description && (
-                    <FollowUpDescription text={report.lastFollowUp.description} />
-                  )}
-                  <p className="text-xs text-slate-500 mt-2">
+                {report.followUpSummary.totalFollowUps > 0 && (
+                  <span className="text-sm text-slate-600">
                     {formatDaysSinceFollowUp(
                       report.followUpSummary.daysSinceLastFollowUp,
                     )}
-                  </p>
-                </div>
-              ) : (
-                <p className="mt-4 text-sm text-slate-500">Aún no hay seguimientos.</p>
-              )}
+                  </span>
+                )}
+              </div>
 
               {report.pendingNextContacts.length > 0 && (
                 <div className="mt-4">
-                  <p className="text-sm font-medium text-slate-800">Próximos contactos</p>
+                  <p className="text-sm font-medium text-slate-800">Próximo contacto</p>
                   <ul className="mt-2 space-y-2">
                     {report.pendingNextContacts.map((nc) => (
                       <li
@@ -308,21 +278,32 @@ export function ConjuntoReportPageClient({
                 </div>
               )}
 
-              {report.recentFollowUps.length > 1 && (
-                <div className="mt-5">
-                  <p className="text-sm font-medium text-slate-700">Historial reciente</p>
-                  <ul className="mt-2 divide-y divide-slate-100 border border-slate-200 rounded-lg overflow-hidden">
-                    {report.recentFollowUps.slice(1, 6).map((fu) => (
-                      <li key={fu.id} className="px-3 py-2.5 text-sm bg-white">
-                        <span className="font-medium text-slate-900">{fu.title}</span>
-                        <span className="block text-xs text-slate-500 mt-0.5">
-                          {followUpTypeLabels[fu.followUpType]} ·{' '}
-                          {formatDateTime(fu.occurredAt)}
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
+              {report.recentFollowUps.length === 0 ? (
+                <p className="mt-4 text-sm text-slate-500">Aún no hay seguimientos.</p>
+              ) : (
+                <ul className="mt-4 space-y-3">
+                  {report.recentFollowUps.map((fu, index) => (
+                    <li
+                      key={fu.id}
+                      className="rounded-lg border border-slate-200 bg-slate-50/80 p-4"
+                    >
+                      {index === 0 && (
+                        <p className="text-xs font-semibold uppercase text-slate-500 mb-1">
+                          Más reciente
+                        </p>
+                      )}
+                      <p className="font-semibold text-slate-900">{fu.title}</p>
+                      <p className="text-sm text-slate-600 mt-1">
+                        {followUpTypeLabels[fu.followUpType] ?? 'Seguimiento'} ·{' '}
+                        {formatDateTime(fu.occurredAt)}
+                        {fu.stageName && <> · Etapa: {fu.stageName}</>}
+                      </p>
+                      {fu.description && (
+                        <FollowUpDescription text={fu.description} />
+                      )}
+                    </li>
+                  ))}
+                </ul>
               )}
             </section>
 
@@ -391,87 +372,6 @@ export function ConjuntoReportPageClient({
                     ))}
                   </ol>
                 </>
-              )}
-            </section>
-
-            <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-900">
-                Reuniones y contactos
-              </h3>
-              <p className="text-sm text-slate-500 mt-1">
-                Programadas, realizadas y pendientes (más recientes primero).
-              </p>
-              {report.plannedMeetings.length === 0 ? (
-                <p className="mt-3 text-sm text-slate-500">
-                  No hay reuniones ni contactos registrados con este conjunto.
-                </p>
-              ) : (
-                <ul className="mt-4 space-y-3">
-                  {report.plannedMeetings.map((m) => {
-                    const done = m.status === 'completed';
-                    const statusText = conjuntoMeetingStatusLabel(
-                      m.status,
-                      m.scheduledAt,
-                    );
-                    return (
-                      <li
-                        key={`${m.source}-${m.id}`}
-                        className={`rounded-lg border px-4 py-3 ${
-                          done
-                            ? 'border-emerald-200 bg-emerald-50/60'
-                            : m.status === 'pending'
-                              ? 'border-amber-200 bg-amber-50/50'
-                              : 'border-indigo-100 bg-indigo-50/50'
-                        }`}
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <p
-                            className={`font-medium text-slate-900 ${
-                              done ? 'line-through opacity-80' : ''
-                            }`}
-                          >
-                            {m.title}
-                          </p>
-                          <span
-                            className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
-                              done
-                                ? 'bg-emerald-100 text-emerald-800'
-                                : m.status === 'pending'
-                                  ? 'bg-amber-100 text-amber-900'
-                                  : 'bg-indigo-100 text-indigo-800'
-                            }`}
-                          >
-                            {statusText}
-                          </span>
-                        </div>
-                        <p className="text-sm text-slate-600 mt-1">
-                          {formatDateTime(m.scheduledAt)}
-                          {m.activityType && (
-                            <span className="text-slate-500">
-                              {' '}
-                              · {ACTIVITY_LABELS[m.activityType] ?? 'Contacto'}
-                            </span>
-                          )}
-                        </p>
-                        {m.stageName && (
-                          <p className="text-xs text-slate-500 mt-1">
-                            Etapa: {m.stageName}
-                          </p>
-                        )}
-                        <p className="text-xs text-slate-500 mt-0.5">
-                          {m.source === 'followup'
-                            ? 'Registro de seguimiento'
-                            : 'Reunión del proceso de onboarding'}
-                        </p>
-                        {m.notes?.trim() && (
-                          <div className="mt-2">
-                            <FollowUpDescription text={m.notes} />
-                          </div>
-                        )}
-                      </li>
-                    );
-                  })}
-                </ul>
               )}
             </section>
 
