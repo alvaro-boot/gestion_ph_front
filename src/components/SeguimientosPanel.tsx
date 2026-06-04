@@ -1,11 +1,13 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ClientProcess, FollowUp, FollowUpType } from '@/lib/types';
 import { api } from '@/lib/api';
 import { followUpTypeLabels, formatDate, formatDateTime, toDatetimeLocalValue } from '@/lib/format';
 import { onboardingProcesses } from '@/lib/process-utils';
+import { isAdminUser } from '@/lib/auth';
+import { FollowUpDescription } from '@/components/FollowUpDescription';
 
 const TYPES: FollowUpType[] = [
   'call',
@@ -36,6 +38,27 @@ export function SeguimientosPanel({
   const [items, setItems] = useState(initialItems);
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [listLoading, setListLoading] = useState(true);
+  const canDelete = isAdminUser();
+
+  useEffect(() => {
+    let cancelled = false;
+    setListLoading(true);
+    api.seguimientos
+      .listByClient(clientId)
+      .then((data) => {
+        if (!cancelled) setItems(data);
+      })
+      .catch(() => {
+        if (!cancelled) setItems(initialItems);
+      })
+      .finally(() => {
+        if (!cancelled) setListLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [clientId]);
 
   const linkableProcesses = onboardingProcesses(processes).filter(
     (p) => p.status === 'active' || p.status === 'completed',
@@ -61,7 +84,7 @@ export function SeguimientosPanel({
     if (!canRegister) return;
     setLoading(true);
     try {
-      const created = await api.seguimientos.create({
+      await api.seguimientos.create({
         clientId,
         title: form.title,
         description: form.description || undefined,
@@ -72,7 +95,8 @@ export function SeguimientosPanel({
           : undefined,
         clientProcessId: form.clientProcessId || undefined,
       });
-      setItems((prev) => [created, ...prev]);
+      const refreshed = await api.seguimientos.listByClient(clientId);
+      setItems(refreshed);
       setForm({
         title: '',
         description: '',
@@ -95,7 +119,8 @@ export function SeguimientosPanel({
     setLoading(true);
     try {
       await api.seguimientos.remove(id);
-      setItems((prev) => prev.filter((i) => i.id !== id));
+      const refreshed = await api.seguimientos.listByClient(clientId);
+      setItems(refreshed);
       router.refresh();
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Error');
@@ -110,6 +135,12 @@ export function SeguimientosPanel({
         <h2 className="font-semibold text-slate-900">Seguimientos</h2>
         <p className="text-sm text-slate-600 mt-1">
           Llamadas, visitas y notas con <strong>{clientName}</strong>
+          {items.length > 0 && (
+            <span className="text-slate-500">
+              {' '}
+              · {items.length} registro{items.length === 1 ? '' : 's'}
+            </span>
+          )}
           {currentStageName && isDuringOnboarding ? (
             <>
               {' '}
@@ -215,8 +246,9 @@ export function SeguimientosPanel({
                       Detalle (opcional)
                     </label>
                     <textarea
-                      rows={2}
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                      rows={5}
+                      placeholder="Escribe el detalle. Usa párrafos separados y listas (1. 2. 3.) para que se vea ordenado."
+                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm leading-relaxed"
                       value={form.description}
                       onChange={(e) =>
                         setForm({ ...form, description: e.target.value })
@@ -256,41 +288,48 @@ export function SeguimientosPanel({
               </form>
             )}
 
-            {items.length === 0 ? (
+            {listLoading ? (
+              <p className="text-sm text-slate-500 animate-pulse">Cargando seguimientos…</p>
+            ) : items.length === 0 ? (
               <p className="text-sm text-slate-500">Aún no hay seguimientos registrados.</p>
             ) : (
-              <ul className="space-y-3">
+              <ul className="space-y-4">
                 {items.map((item) => (
                   <li
                     key={item.id}
-                    className="rounded-lg border border-slate-200 px-4 py-3"
+                    className="rounded-lg border border-slate-200 px-4 py-4"
                   >
-                    <div className="flex justify-between gap-2">
-                      <div>
-                        <p className="font-medium text-slate-900">{item.title}</p>
-                        <p className="text-xs text-slate-500 mt-0.5">
+                    <div className="flex justify-between gap-3">
+                      <div className="min-w-0 flex-1">
+                        <p className="font-semibold text-slate-900">{item.title}</p>
+                        <p className="text-xs text-slate-500 mt-1">
                           {followUpTypeLabels[item.followUpType]} ·{' '}
                           {formatDateTime(item.occurredAt)}
+                          {item.clientProcess?.processTemplate?.name && (
+                            <> · {item.clientProcess.processTemplate.name}</>
+                          )}
                         </p>
                         {item.description && (
-                          <p className="text-sm text-slate-600 mt-2">{item.description}</p>
+                          <FollowUpDescription text={item.description} />
                         )}
                         {item.nextActionAt &&
                           new Date(item.nextActionAt).getTime() >
                             new Date(item.occurredAt).getTime() && (
-                          <p className="text-xs text-indigo-600 mt-1">
+                          <p className="text-xs text-indigo-600 mt-2 font-medium">
                             Próximo contacto: {formatDate(item.nextActionAt)}
                           </p>
                         )}
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => handleDelete(item.id)}
-                        disabled={loading}
-                        className="text-xs text-red-600 hover:underline h-fit"
-                      >
-                        Eliminar
-                      </button>
+                      {canDelete && (
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(item.id)}
+                          disabled={loading}
+                          className="text-xs text-red-600 hover:underline h-fit shrink-0"
+                        >
+                          Eliminar
+                        </button>
+                      )}
                     </div>
                   </li>
                 ))}

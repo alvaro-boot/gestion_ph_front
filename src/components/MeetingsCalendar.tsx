@@ -106,9 +106,9 @@ function defaultDatetimeForDay(date: Date) {
 type AddKind = CalendarItemKind;
 
 function itemIsOpen(item: CalendarMonthItem) {
-  if (item.kind === 'next_contact') return true;
+  if (item.kind === 'next_contact') return item.status !== 'completed';
   if (item.kind === 'meeting') {
-    if (item.meetingSource === 'followup') return true;
+    if (item.meetingSource === 'followup') return item.status !== 'completed';
     return item.status === 'scheduled';
   }
   return item.status === 'active';
@@ -116,6 +116,7 @@ function itemIsOpen(item: CalendarMonthItem) {
 
 function statusLabel(item: CalendarMonthItem) {
   if (item.kind === 'next_contact') {
+    if (item.status === 'completed') return 'Realizado';
     return item.status === 'overdue' ? 'Vencido' : 'Pendiente';
   }
   if (item.status === 'completed') return 'Terminada';
@@ -137,7 +138,11 @@ function chipPrimaryLine(item: CalendarMonthItem) {
 function chipSecondaryLine(item: CalendarMonthItem) {
   if (item.kind === 'next_contact') {
     const prefix =
-      item.status === 'overdue' ? 'Vencido · ' : 'Próximo · ';
+      item.status === 'completed'
+        ? 'Realizado · '
+        : item.status === 'overdue'
+          ? 'Vencido · '
+          : 'Próximo · ';
     return `${prefix}${item.title}`;
   }
   return item.clientName;
@@ -455,7 +460,6 @@ export function MeetingsCalendar({
         const prev = viewItem.description?.trim();
         const notes = completionNotes.trim();
         await api.seguimientos.update(viewItem.id, {
-          nextActionAt: null,
           description: prev
             ? `${prev}\n\n[Contacto realizado] ${notes}`
             : `[Contacto realizado] ${notes}`,
@@ -465,7 +469,9 @@ export function MeetingsCalendar({
           const prev = viewItem.description?.trim();
           const notes = completionNotes.trim();
           await api.seguimientos.update(viewItem.id, {
-            description: prev ? `${prev}\n\n[Realizada] ${notes}` : `[Realizada] ${notes}`,
+            description: prev
+              ? `${prev}\n\n[Realizada] ${notes}`
+              : `[Realizada] ${notes}`,
           });
         } else {
           await api.calendar.updateMeeting(viewItem.id, {
