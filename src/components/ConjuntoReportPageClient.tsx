@@ -7,6 +7,7 @@ import type { ConjuntoPickerItem, ConjuntoReport } from '@/lib/types';
 import { api } from '@/lib/api';
 import { getToken } from '@/lib/auth';
 import {
+  conjuntoMeetingStatusLabel,
   followUpTypeLabels,
   formatDate,
   formatDateTime,
@@ -15,10 +16,18 @@ import {
 } from '@/lib/format';
 import { StatusBadge } from '@/components/StatusBadge';
 import { FollowUpStatusBadge } from '@/components/FollowUpStatusBadge';
+import { FollowUpDescription } from '@/components/FollowUpDescription';
 
 const DELIVERY_LABELS: Record<string, string> = {
   client_delivery: 'Entrega del cliente',
   internal_delivery: 'Nuestra entrega',
+};
+
+const ACTIVITY_LABELS: Record<string, string> = {
+  meeting: 'Reunión',
+  call: 'Llamada',
+  visit: 'Visita',
+  other: 'Contacto',
 };
 
 function clientLabel(c: ConjuntoPickerItem) {
@@ -264,9 +273,7 @@ export function ConjuntoReportPageClient({
                     )}
                   </p>
                   {report.lastFollowUp.description && (
-                    <p className="text-sm text-slate-700 mt-2 whitespace-pre-wrap">
-                      {report.lastFollowUp.description}
-                    </p>
+                    <FollowUpDescription text={report.lastFollowUp.description} />
                   )}
                   <p className="text-xs text-slate-500 mt-2">
                     {formatDaysSinceFollowUp(
@@ -388,32 +395,82 @@ export function ConjuntoReportPageClient({
             </section>
 
             <section className="rounded-xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h3 className="text-lg font-semibold text-slate-900">Reuniones planeadas</h3>
+              <h3 className="text-lg font-semibold text-slate-900">
+                Reuniones y contactos
+              </h3>
+              <p className="text-sm text-slate-500 mt-1">
+                Programadas, realizadas y pendientes (más recientes primero).
+              </p>
               {report.plannedMeetings.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-500">
-                  No hay reuniones programadas con este conjunto.
+                  No hay reuniones ni contactos registrados con este conjunto.
                 </p>
               ) : (
                 <ul className="mt-4 space-y-3">
-                  {report.plannedMeetings.map((m) => (
-                    <li
-                      key={`${m.source}-${m.id}`}
-                      className="rounded-lg border border-indigo-100 bg-indigo-50/50 px-4 py-3"
-                    >
-                      <p className="font-medium text-slate-900">{m.title}</p>
-                      <p className="text-sm text-slate-600 mt-1">
-                        {formatDateTime(m.scheduledAt)}
-                      </p>
-                      {m.stageName && (
-                        <p className="text-xs text-slate-500 mt-1">Etapa: {m.stageName}</p>
-                      )}
-                      <p className="text-xs text-indigo-600 mt-1">
-                        {m.source === 'followup'
-                          ? 'Seguimiento (bitácora)'
-                          : 'Proceso de onboarding'}
-                      </p>
-                    </li>
-                  ))}
+                  {report.plannedMeetings.map((m) => {
+                    const done = m.status === 'completed';
+                    const statusText = conjuntoMeetingStatusLabel(
+                      m.status,
+                      m.scheduledAt,
+                    );
+                    return (
+                      <li
+                        key={`${m.source}-${m.id}`}
+                        className={`rounded-lg border px-4 py-3 ${
+                          done
+                            ? 'border-emerald-200 bg-emerald-50/60'
+                            : m.status === 'pending'
+                              ? 'border-amber-200 bg-amber-50/50'
+                              : 'border-indigo-100 bg-indigo-50/50'
+                        }`}
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-2">
+                          <p
+                            className={`font-medium text-slate-900 ${
+                              done ? 'line-through opacity-80' : ''
+                            }`}
+                          >
+                            {m.title}
+                          </p>
+                          <span
+                            className={`shrink-0 rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                              done
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : m.status === 'pending'
+                                  ? 'bg-amber-100 text-amber-900'
+                                  : 'bg-indigo-100 text-indigo-800'
+                            }`}
+                          >
+                            {statusText}
+                          </span>
+                        </div>
+                        <p className="text-sm text-slate-600 mt-1">
+                          {formatDateTime(m.scheduledAt)}
+                          {m.activityType && (
+                            <span className="text-slate-500">
+                              {' '}
+                              · {ACTIVITY_LABELS[m.activityType] ?? 'Contacto'}
+                            </span>
+                          )}
+                        </p>
+                        {m.stageName && (
+                          <p className="text-xs text-slate-500 mt-1">
+                            Etapa: {m.stageName}
+                          </p>
+                        )}
+                        <p className="text-xs text-slate-500 mt-0.5">
+                          {m.source === 'followup'
+                            ? 'Registro de seguimiento'
+                            : 'Reunión del proceso de onboarding'}
+                        </p>
+                        {m.notes?.trim() && (
+                          <div className="mt-2">
+                            <FollowUpDescription text={m.notes} />
+                          </div>
+                        )}
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </section>

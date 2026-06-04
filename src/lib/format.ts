@@ -109,4 +109,20 @@ export const statusLabels: Record<string, string> = {
   active: 'Activo',
   paused: 'Pausado',
   cancelled: 'Cancelado',
+  scheduled: 'Programada',
 };
+
+/** Estado legible para reuniones en el reporte público de conjuntos. */
+export function conjuntoMeetingStatusLabel(
+  status: string,
+  scheduledAt: string,
+): string {
+  if (status === 'completed') {
+    return 'Realizado';
+  }
+  if (status === 'scheduled' && new Date(scheduledAt).getTime() < Date.now()) {
+    return 'Pendiente';
+  }
+  if (status === 'pending') return 'Pendiente';
+  return statusLabels[status] ?? 'Programada';
+}
