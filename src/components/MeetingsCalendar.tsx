@@ -395,7 +395,10 @@ export function MeetingsCalendar({
     setSaving(true);
     try {
       if (viewItem.kind === 'next_contact') {
-        await api.seguimientos.update(viewItem.id, { nextActionAt: null });
+        await api.clients.update(viewItem.clientId, {
+          nextContactAt: '',
+          nextContactTitle: '',
+        });
       } else if (viewItem.kind === 'meeting') {
         if (viewItem.meetingSource === 'followup') {
           await api.seguimientos.remove(viewItem.id);
@@ -425,7 +428,9 @@ export function MeetingsCalendar({
     try {
       const iso = new Date(postponeAt).toISOString();
       if (viewItem.kind === 'next_contact') {
-        await api.seguimientos.update(viewItem.id, { nextActionAt: iso });
+        await api.clients.update(viewItem.clientId, {
+          nextContactAt: iso,
+        });
       } else if (viewItem.kind === 'meeting') {
         if (viewItem.meetingSource === 'followup') {
           await api.seguimientos.update(viewItem.id, { occurredAt: iso });
@@ -465,6 +470,10 @@ export function MeetingsCalendar({
           followUpType: 'call',
           occurredAt: new Date().toISOString(),
           clientProcessId: viewItem.processId ?? undefined,
+        });
+        await api.clients.update(viewItem.clientId, {
+          nextContactAt: '',
+          nextContactTitle: '',
         });
       } else if (viewItem.kind === 'meeting') {
         if (viewItem.meetingSource === 'followup') {

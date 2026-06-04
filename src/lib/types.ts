@@ -90,6 +90,8 @@ export interface Client {
   phone: string | null;
   company: string | null;
   notes: string | null;
+  nextContactAt?: string | null;
+  nextContactTitle?: string | null;
   updatedAt?: string;
   processes?: ClientProcess[];
   followUps?: FollowUp[];

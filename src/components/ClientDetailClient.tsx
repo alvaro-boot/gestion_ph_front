@@ -324,6 +324,8 @@ export function ClientDetailClient({
           clientId={client.id}
           clientName={client.name}
           initialItems={client.followUps ?? []}
+          initialNextContactAt={client.nextContactAt ?? null}
+          initialNextContactTitle={client.nextContactTitle ?? null}
           processes={processes}
           defaultProcessId={activeProcess?.id}
           currentStageName={

@@ -3,8 +3,13 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import type { ClientProcess, FollowUp, FollowUpType } from '@/lib/types';
-import { api } from '@/lib/api';
-import { followUpTypeLabels, formatDate, formatDateTime, toDatetimeLocalValue } from '@/lib/format';
+import { api, invalidateApiCache } from '@/lib/api';
+import {
+  followUpTypeLabels,
+  formatDate,
+  formatDateTime,
+  toDatetimeLocalValue,
+} from '@/lib/format';
 import { onboardingProcesses } from '@/lib/process-utils';
 import { isAdminUser } from '@/lib/auth';
 import { FollowUpDescription } from '@/components/FollowUpDescription';
@@ -22,6 +27,8 @@ export function SeguimientosPanel({
   clientId,
   clientName,
   initialItems,
+  initialNextContactAt,
+  initialNextContactTitle,
   processes,
   defaultProcessId,
   currentStageName,
@@ -29,6 +36,8 @@ export function SeguimientosPanel({
   clientId: string;
   clientName: string;
   initialItems: FollowUp[];
+  initialNextContactAt?: string | null;
+  initialNextContactTitle?: string | null;
   processes: ClientProcess[];
   defaultProcessId?: string;
   /** Etapa en curso (solo durante onboarding activo). */
@@ -67,14 +76,42 @@ export function SeguimientosPanel({
   const canRegister = linkableProcesses.length > 0;
   const isDuringOnboarding = linkableProcesses.some((p) => p.status === 'active');
 
+  const [nextContact, setNextContact] = useState({
+    at: toDatetimeLocalValue(initialNextContactAt),
+    title: initialNextContactTitle ?? '',
+  });
+
   const [form, setForm] = useState({
     title: '',
     description: '',
     followUpType: 'note' as FollowUpType,
     occurredAt: toDatetimeLocalValue(new Date()),
-    nextActionAt: '',
     clientProcessId: defaultProcess?.id ?? '',
   });
+
+  async function saveNextContact(clear = false) {
+    setLoading(true);
+    try {
+      await api.clients.update(clientId, {
+        nextContactAt: clear
+          ? ''
+          : nextContact.at
+            ? new Date(nextContact.at).toISOString()
+            : '',
+        nextContactTitle: clear ? '' : nextContact.title.trim(),
+      });
+      if (clear) {
+        setNextContact({ at: '', title: '' });
+      }
+      invalidateApiCache('/clients');
+      invalidateApiCache('/calendar');
+      router.refresh();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error al guardar');
+    } finally {
+      setLoading(false);
+    }
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -87,9 +124,6 @@ export function SeguimientosPanel({
         description: form.description || undefined,
         followUpType: form.followUpType,
         occurredAt: new Date(form.occurredAt).toISOString(),
-        nextActionAt: form.nextActionAt
-          ? new Date(form.nextActionAt).toISOString()
-          : undefined,
         clientProcessId: form.clientProcessId || undefined,
       });
       const refreshed = await api.seguimientos.list(clientId);
@@ -99,7 +133,6 @@ export function SeguimientosPanel({
         description: '',
         followUpType: 'note',
         occurredAt: toDatetimeLocalValue(new Date()),
-        nextActionAt: '',
         clientProcessId: defaultProcess?.id ?? '',
       });
       setShowForm(false);
@@ -156,6 +189,73 @@ export function SeguimientosPanel({
           </p>
         ) : (
           <>
+            <div className="rounded-lg border border-sky-200 bg-sky-50/60 p-4 space-y-3">
+              <div>
+                <h3 className="text-sm font-semibold text-sky-950">
+                  Próximo contacto del conjunto
+                </h3>
+                <p className="text-xs text-sky-800/80 mt-0.5">
+                  Aplica a <strong>{clientName}</strong>, no a un seguimiento en particular.
+                  Aparece en el calendario y en el reporte público.
+                </p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Fecha y hora
+                  </label>
+                  <input
+                    type="datetime-local"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+                    value={nextContact.at}
+                    onChange={(e) =>
+                      setNextContact({ ...nextContact, at: e.target.value })
+                    }
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-700 mb-1">
+                    Motivo (opcional)
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Ej: Llamada de control"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm bg-white"
+                    value={nextContact.title}
+                    onChange={(e) =>
+                      setNextContact({ ...nextContact, title: e.target.value })
+                    }
+                  />
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={loading || !nextContact.at}
+                  onClick={() => saveNextContact(false)}
+                  className="rounded-lg bg-sky-600 px-3 py-1.5 text-sm font-medium text-white hover:bg-sky-700 disabled:opacity-50"
+                >
+                  Guardar próximo contacto
+                </button>
+                {(initialNextContactAt || nextContact.at) && (
+                  <button
+                    type="button"
+                    disabled={loading}
+                    onClick={() => saveNextContact(true)}
+                    className="text-sm text-slate-600 hover:underline disabled:opacity-50"
+                  >
+                    Quitar del calendario
+                  </button>
+                )}
+              </div>
+              {initialNextContactAt && (
+                <p className="text-xs text-sky-800">
+                  Programado: {formatDate(initialNextContactAt)}
+                  {initialNextContactTitle ? ` · ${initialNextContactTitle}` : ''}
+                </p>
+              )}
+            </div>
+
             {!showForm ? (
               <button
                 type="button"
@@ -252,19 +352,6 @@ export function SeguimientosPanel({
                       }
                     />
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Próximo contacto (opcional)
-                    </label>
-                    <input
-                      type="datetime-local"
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                      value={form.nextActionAt}
-                      onChange={(e) =>
-                        setForm({ ...form, nextActionAt: e.target.value })
-                      }
-                    />
-                  </div>
                 </div>
                 <div className="flex gap-2">
                   <button
@@ -308,13 +395,6 @@ export function SeguimientosPanel({
                         </p>
                         {item.description && (
                           <FollowUpDescription text={item.description} />
-                        )}
-                        {item.nextActionAt &&
-                          new Date(item.nextActionAt).getTime() >
-                            new Date(item.occurredAt).getTime() && (
-                          <p className="text-xs text-indigo-600 mt-2 font-medium">
-                            Próximo contacto: {formatDate(item.nextActionAt)}
-                          </p>
                         )}
                       </div>
                       {canDelete && (
