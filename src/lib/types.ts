@@ -177,7 +177,7 @@ export interface CalendarMonthItem {
   stageProgressId?: string | null;
   description?: string | null;
   processKind?: 'onboarding' | 'seguimiento';
-  meetingSource?: 'stage' | 'followup';
+  meetingSource?: 'stage' | 'followup' | 'general';
   notes?: string | null;
   completionNotes?: string | null;
   /** Fecha original del compromiso si se muestra al inicio del mes por vencido */
@@ -199,6 +199,7 @@ export interface CalendarPickerOption {
 export interface CalendarClientOption {
   id: string;
   name: string;
+  company?: string | null;
   processes: { id: string; name: string }[];
 }
 

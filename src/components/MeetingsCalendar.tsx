@@ -11,6 +11,7 @@ import type {
 } from '@/lib/types';
 import { api, invalidateApiCache } from '@/lib/api';
 import { formatDateTime, toDatetimeLocalValue } from '@/lib/format';
+import { ClientSearchPicker } from '@/components/ClientSearchPicker';
 
 const WEEKDAYS = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];
 
@@ -36,6 +37,8 @@ const MEETING_ONBOARDING_STYLE =
   'bg-indigo-100 border-indigo-300 text-indigo-950 hover:bg-indigo-200';
 const MEETING_SEGUIMIENTO_STYLE =
   'bg-violet-100 border-violet-300 text-violet-950 hover:bg-violet-200';
+const MEETING_GENERAL_STYLE =
+  'bg-orange-100 border-orange-400 text-orange-950 hover:bg-orange-200';
 const NEXT_CONTACT_STYLE =
   'bg-sky-100 border-sky-300 text-sky-950 hover:bg-sky-200';
 const NEXT_CONTACT_OVERDUE_STYLE =
@@ -48,6 +51,7 @@ function calendarChipStyle(item: CalendarMonthItem) {
       : NEXT_CONTACT_STYLE;
   }
   if (item.kind === 'meeting') {
+    if (item.meetingSource === 'general') return MEETING_GENERAL_STYLE;
     return item.processKind === 'seguimiento'
       ? MEETING_SEGUIMIENTO_STYLE
       : MEETING_ONBOARDING_STYLE;
@@ -58,6 +62,7 @@ function calendarChipStyle(item: CalendarMonthItem) {
 const LEGEND_ITEMS: { kind: CalendarItemKind; dot: string; label: string }[] = [
   { kind: 'meeting', dot: 'bg-indigo-500', label: 'Reunión onboarding' },
   { kind: 'meeting', dot: 'bg-violet-500', label: 'Reunión seguimiento' },
+  { kind: 'meeting', dot: 'bg-orange-500', label: 'Reunión general' },
   { kind: 'client_delivery', dot: 'bg-amber-500', label: 'Entrega del cliente' },
   { kind: 'internal_delivery', dot: 'bg-emerald-500', label: 'Nuestra entrega' },
   { kind: 'next_contact', dot: 'bg-sky-500', label: 'Próximo contacto' },
@@ -128,6 +133,9 @@ function statusLabel(item: CalendarMonthItem) {
   if (item.kind === 'meeting' && item.meetingSource === 'followup') {
     return 'Seguimiento';
   }
+  if (item.kind === 'meeting' && item.meetingSource === 'general') {
+    return 'General';
+  }
   if (item.kind === 'meeting') return 'Programada';
   return 'Pendiente';
 }
@@ -140,6 +148,9 @@ function chipPrimaryLine(item: CalendarMonthItem) {
 }
 
 function chipSecondaryLine(item: CalendarMonthItem) {
+  if (item.kind === 'meeting' && item.meetingSource === 'general') {
+    return 'Sin conjunto';
+  }
   if (item.kind === 'next_contact') {
     const prefix =
       item.status === 'completed'
@@ -189,6 +200,8 @@ export function MeetingsCalendar({
   const [completionNotes, setCompletionNotes] = useState('');
 
   const [meetingForm, setMeetingForm] = useState({
+    scope: 'client' as 'client' | 'general',
+    clientId: '',
     processKey: '',
     title: '',
     scheduledAt: '',
@@ -302,24 +315,42 @@ export function MeetingsCalendar({
 
   const counts = useMemo(() => {
     const c = {
-      meeting: 0,
+      meeting_onboarding: 0,
+      meeting_seguimiento: 0,
+      meeting_general: 0,
       client_delivery: 0,
       internal_delivery: 0,
       next_contact: 0,
     };
     for (const i of items) {
-      if (i.kind in c) c[i.kind as keyof typeof c]++;
+      if (i.kind === 'meeting') {
+        if (i.meetingSource === 'general') c.meeting_general++;
+        else if (i.processKind === 'seguimiento') c.meeting_seguimiento++;
+        else c.meeting_onboarding++;
+      } else if (i.kind in c) {
+        c[i.kind as 'client_delivery' | 'internal_delivery' | 'next_contact']++;
+      }
     }
     return c;
   }, [items]);
+
+  const processesForMeetingClient = useMemo(() => {
+    if (!meetingForm.clientId) return [];
+    return pickerOptions.filter((p) => p.clientId === meetingForm.clientId);
+  }, [pickerOptions, meetingForm.clientId]);
 
   function openAdd(kind: AddKind, date: Date) {
     setAddModal({ kind, date });
     const dt = defaultDatetimeForDay(date);
     if (kind === 'meeting') {
-      const first = pickerOptions[0];
+      const firstClient = clients[0];
+      const firstProcess = firstClient
+        ? pickerOptions.find((p) => p.clientId === firstClient.id)
+        : pickerOptions[0];
       setMeetingForm({
-        processKey: first?.processId ?? '',
+        scope: 'client',
+        clientId: firstClient?.id ?? '',
+        processKey: firstProcess?.processId ?? '',
         title: '',
         scheduledAt: dt,
       });
@@ -341,17 +372,24 @@ export function MeetingsCalendar({
     setSaving(true);
     try {
       if (addModal.kind === 'meeting') {
-        const opt = pickerOptions.find((p) => p.processId === meetingForm.processKey);
-        if (!opt) {
-          alert('Selecciona un cliente.');
-          return;
+        if (meetingForm.scope === 'general') {
+          await api.calendar.createMeeting({
+            title: meetingForm.title,
+            scheduledAt: new Date(meetingForm.scheduledAt).toISOString(),
+          });
+        } else {
+          const opt = pickerOptions.find((p) => p.processId === meetingForm.processKey);
+          if (!opt) {
+            alert('Selecciona un conjunto y su proceso.');
+            return;
+          }
+          await api.calendar.createMeeting({
+            processId: opt.processId,
+            stageProgressId: opt.currentStageProgressId ?? undefined,
+            title: meetingForm.title,
+            scheduledAt: new Date(meetingForm.scheduledAt).toISOString(),
+          });
         }
-        await api.calendar.createMeeting({
-          processId: opt.processId,
-          stageProgressId: opt.currentStageProgressId ?? undefined,
-          title: meetingForm.title,
-          scheduledAt: new Date(meetingForm.scheduledAt).toISOString(),
-        });
       } else {
         await api.calendar.createDelivery({
           clientId: deliveryForm.clientId,
@@ -554,14 +592,18 @@ export function MeetingsCalendar({
                 <span className={`h-3 w-3 rounded-full shrink-0 ${leg.dot}`} />
                 {leg.label}
                 {leg.kind === 'meeting' && leg.dot.includes('indigo')
-                  ? ` (${counts.meeting})`
-                  : leg.kind === 'client_delivery'
-                    ? ` (${counts.client_delivery})`
-                    : leg.kind === 'internal_delivery'
-                      ? ` (${counts.internal_delivery})`
-                      : leg.kind === 'next_contact'
-                        ? ` (${counts.next_contact})`
-                        : ''}
+                  ? ` (${counts.meeting_onboarding})`
+                  : leg.kind === 'meeting' && leg.dot.includes('violet')
+                    ? ` (${counts.meeting_seguimiento})`
+                    : leg.kind === 'meeting' && leg.dot.includes('orange')
+                      ? ` (${counts.meeting_general})`
+                      : leg.kind === 'client_delivery'
+                        ? ` (${counts.client_delivery})`
+                        : leg.kind === 'internal_delivery'
+                          ? ` (${counts.internal_delivery})`
+                          : leg.kind === 'next_contact'
+                            ? ` (${counts.next_contact})`
+                            : ''}
               </span>
             ))}
           </div>
@@ -712,52 +754,103 @@ export function MeetingsCalendar({
               {addModal.kind === 'meeting' ? (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Cliente / proceso
-                    </label>
-                    <select
-                      required
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
-                      value={meetingForm.processKey}
-                      onChange={(e) =>
-                        setMeetingForm({ ...meetingForm, processKey: e.target.value })
-                      }
-                    >
-                      {pickerOptions.length === 0 ? (
-                        <option value="">Sin clientes disponibles</option>
-                      ) : (
-                        <>
-                          {pickerOptions.filter((p) => p.processKind === 'onboarding')
-                            .length > 0 && (
-                            <optgroup label="Onboarding en curso">
-                              {pickerOptions
-                                .filter((p) => p.processKind === 'onboarding')
-                                .map((p) => (
-                                  <option key={p.processId} value={p.processId}>
-                                    {p.clientName}
-                                    {p.currentStageName
-                                      ? ` — ${p.currentStageName}`
-                                      : ` — ${p.templateName}`}
-                                  </option>
-                                ))}
-                            </optgroup>
-                          )}
-                          {pickerOptions.filter((p) => p.processKind === 'seguimiento')
-                            .length > 0 && (
-                            <optgroup label="Post-onboarding (seguimientos)">
-                              {pickerOptions
-                                .filter((p) => p.processKind === 'seguimiento')
-                                .map((p) => (
-                                  <option key={p.processId} value={p.processId}>
-                                    {p.clientName} — onboarding completado
-                                  </option>
-                                ))}
-                            </optgroup>
-                          )}
-                        </>
-                      )}
-                    </select>
+                    <span className="block text-sm font-medium text-slate-700 mb-2">
+                      Tipo de reunión
+                    </span>
+                    <div className="flex flex-wrap gap-2">
+                      <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-indigo-400 has-[:checked]:bg-indigo-50">
+                        <input
+                          type="radio"
+                          name="meeting-scope"
+                          checked={meetingForm.scope === 'client'}
+                          onChange={() =>
+                            setMeetingForm((f) => ({
+                              ...f,
+                              scope: 'client',
+                              processKey:
+                                processesForMeetingClient[0]?.processId ?? f.processKey,
+                            }))
+                          }
+                        />
+                        Con conjunto
+                      </label>
+                      <label className="inline-flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm cursor-pointer has-[:checked]:border-orange-400 has-[:checked]:bg-orange-50">
+                        <input
+                          type="radio"
+                          name="meeting-scope"
+                          checked={meetingForm.scope === 'general'}
+                          onChange={() =>
+                            setMeetingForm((f) => ({ ...f, scope: 'general' }))
+                          }
+                        />
+                        General (sin conjunto)
+                      </label>
+                    </div>
                   </div>
+                  {meetingForm.scope === 'client' ? (
+                    <>
+                      <div>
+                        <label className="block text-sm font-medium text-slate-700 mb-1">
+                          Conjunto (cliente)
+                        </label>
+                        <ClientSearchPicker
+                          clients={clients}
+                          value={meetingForm.clientId}
+                          onChange={(clientId) => {
+                            const first = pickerOptions.find(
+                              (p) => p.clientId === clientId,
+                            );
+                            setMeetingForm({
+                              ...meetingForm,
+                              clientId,
+                              processKey: first?.processId ?? '',
+                            });
+                          }}
+                        />
+                      </div>
+                      {processesForMeetingClient.length > 0 && (
+                        <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-1">
+                            Proceso
+                          </label>
+                          <select
+                            required
+                            className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                            value={meetingForm.processKey}
+                            onChange={(e) =>
+                              setMeetingForm({
+                                ...meetingForm,
+                                processKey: e.target.value,
+                              })
+                            }
+                          >
+                            {processesForMeetingClient.map((p) => (
+                              <option key={p.processId} value={p.processId}>
+                                {p.templateName}
+                                {p.processKind === 'onboarding' && p.currentStageName
+                                  ? ` — ${p.currentStageName}`
+                                  : p.processKind === 'seguimiento'
+                                    ? ' — post-onboarding'
+                                    : ''}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                      {meetingForm.clientId &&
+                        processesForMeetingClient.length === 0 && (
+                          <p className="text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                            Este conjunto no tiene proceso de onboarding activo o
+                            completado para agendar reuniones.
+                          </p>
+                        )}
+                    </>
+                  ) : (
+                    <p className="text-sm text-orange-900 bg-orange-50 border border-orange-200 rounded-lg px-3 py-2">
+                      Reunión interna o con terceros, sin vínculo a un conjunto. Se
+                      mostrará en <strong>naranja</strong> en el calendario.
+                    </p>
+                  )}
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">
                       Título
@@ -790,26 +883,19 @@ export function MeetingsCalendar({
                 <>
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1">
-                      Cliente
+                      Conjunto (cliente)
                     </label>
-                    <select
-                      required
-                      className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+                    <ClientSearchPicker
+                      clients={clients}
                       value={deliveryForm.clientId}
-                      onChange={(e) =>
+                      onChange={(clientId) =>
                         setDeliveryForm({
                           ...deliveryForm,
-                          clientId: e.target.value,
+                          clientId,
                           processId: '',
                         })
                       }
-                    >
-                      {clients.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
+                    />
                   </div>
                   {processesForClient.length > 0 && (
                     <div>
@@ -877,7 +963,12 @@ export function MeetingsCalendar({
               <div className="flex gap-2 pt-2">
                 <button
                   type="submit"
-                  disabled={saving}
+                  disabled={
+                    saving ||
+                    (addModal.kind === 'meeting' &&
+                      meetingForm.scope === 'client' &&
+                      !meetingForm.processKey)
+                  }
                   className="rounded-lg bg-indigo-600 px-4 py-2 text-sm text-white hover:bg-indigo-700 disabled:opacity-50"
                 >
                   Guardar
@@ -901,9 +992,11 @@ export function MeetingsCalendar({
             <span
               className={`inline-block text-sm font-medium px-2.5 py-1 rounded-full mb-3 ${calendarChipStyle(viewItem)}`}
             >
-              {viewItem.kind === 'meeting' && viewItem.processKind === 'seguimiento'
-                ? 'Reunión · Seguimiento'
-                : KIND_LABELS[viewItem.kind]}
+              {viewItem.kind === 'meeting' && viewItem.meetingSource === 'general'
+                ? 'Reunión general'
+                : viewItem.kind === 'meeting' && viewItem.processKind === 'seguimiento'
+                  ? 'Reunión · Seguimiento'
+                  : KIND_LABELS[viewItem.kind]}
             </span>
             <div className="flex items-start justify-between gap-3">
               <h3 className="text-lg font-semibold text-slate-900 leading-snug">
@@ -915,8 +1008,12 @@ export function MeetingsCalendar({
                 {statusLabel(viewItem)}
               </span>
             </div>
-            {viewItem.kind !== 'next_contact' && (
+            {viewItem.kind !== 'next_contact' &&
+              viewItem.meetingSource !== 'general' && (
               <p className="text-base text-slate-600 mt-1">{viewItem.clientName}</p>
+            )}
+            {viewItem.meetingSource === 'general' && (
+              <p className="text-base text-orange-800 mt-1">Sin conjunto asociado</p>
             )}
             {viewItem.kind === 'next_contact' && (
               <p className="text-base text-slate-700 mt-2">{viewItem.title}</p>
@@ -1024,7 +1121,7 @@ export function MeetingsCalendar({
                   >
                     Ver ficha del cliente
                   </Link>
-                ) : viewItem.meetingSource === 'followup' ? (
+                ) : viewItem.meetingSource === 'general' ? null : viewItem.meetingSource === 'followup' ? (
                   <Link
                     href={`/clientes/${viewItem.clientId}#seguimientos`}
                     className="text-sm text-indigo-600 hover:underline"
