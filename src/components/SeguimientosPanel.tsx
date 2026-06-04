@@ -45,12 +45,9 @@ export function SeguimientosPanel({
     let cancelled = false;
     setListLoading(true);
     api.seguimientos
-      .listByClient(clientId)
+      .list(clientId)
       .then((data) => {
         if (!cancelled) setItems(data);
-      })
-      .catch(() => {
-        if (!cancelled) setItems(initialItems);
       })
       .finally(() => {
         if (!cancelled) setListLoading(false);
@@ -95,7 +92,7 @@ export function SeguimientosPanel({
           : undefined,
         clientProcessId: form.clientProcessId || undefined,
       });
-      const refreshed = await api.seguimientos.listByClient(clientId);
+      const refreshed = await api.seguimientos.list(clientId);
       setItems(refreshed);
       setForm({
         title: '',
@@ -119,7 +116,7 @@ export function SeguimientosPanel({
     setLoading(true);
     try {
       await api.seguimientos.remove(id);
-      const refreshed = await api.seguimientos.listByClient(clientId);
+      const refreshed = await api.seguimientos.list(clientId);
       setItems(refreshed);
       router.refresh();
     } catch (err) {
