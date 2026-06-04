@@ -1,9 +1,16 @@
 'use client';
 
-const CLOSURE_MARKERS = [
-  { tag: '[Contacto realizado]', label: 'Contacto realizado', className: 'bg-sky-50 border-sky-200 text-sky-900' },
-  { tag: '[Realizada]', label: 'Reunión realizada', className: 'bg-violet-50 border-violet-200 text-violet-900' },
-] as const;
+const CLOSURE_MARKERS = ['[Contacto realizado]', '[Realizada]'] as const;
+
+/** Quita notas de cierre pegadas al mismo registro (legacy); cada cierre debe ser otro seguimiento. */
+export function stripClosureMarkers(raw: string): string {
+  let body = raw.trim();
+  for (const tag of CLOSURE_MARKERS) {
+    const idx = body.indexOf(tag);
+    if (idx !== -1) body = body.slice(0, idx).trim();
+  }
+  return body;
+}
 
 function renderInline(text: string, keyPrefix: string) {
   const parts = text.split(/(\*\*[^*]+\*\*)/g);
@@ -23,13 +30,16 @@ function renderBlock(text: string, index: number) {
   const lines = text.split('\n').map((l) => l.trim()).filter(Boolean);
   if (lines.length === 0) return null;
 
-  const isList = lines.every(
-    (l) => /^(\d+[\.\)]\s|[-•*]\s)/.test(l) || /^\*\*\d+/.test(l),
-  );
+  const isList =
+    lines.length > 1 &&
+    lines.every((l) => /^(\d+[\.\)]\s|[-•*]\s)/.test(l) || /^\*\*\d+/.test(l));
 
-  if (isList && lines.length > 1) {
+  if (isList) {
     return (
-      <ol key={index} className="list-decimal list-outside ml-5 space-y-2 text-sm text-slate-700">
+      <ol
+        key={index}
+        className="list-decimal list-outside ml-5 space-y-2 leading-relaxed"
+      >
         {lines.map((line, li) => {
           const cleaned = line
             .replace(/^\*\*(\d+[\.\)]?\s*)\*\*\s*/i, '$1 ')
@@ -37,7 +47,7 @@ function renderBlock(text: string, index: number) {
             .replace(/^[-•*]\s*/, '')
             .trim();
           return (
-            <li key={li} className="pl-1 leading-relaxed">
+            <li key={li} className="pl-1">
               {renderInline(cleaned, `li-${index}-${li}`)}
             </li>
           );
@@ -48,7 +58,7 @@ function renderBlock(text: string, index: number) {
 
   if (lines.length === 1) {
     return (
-      <p key={index} className="text-sm text-slate-700 leading-relaxed">
+      <p key={index} className="leading-relaxed">
         {renderInline(lines[0], `p-${index}`)}
       </p>
     );
@@ -57,7 +67,7 @@ function renderBlock(text: string, index: number) {
   return (
     <div key={index} className="space-y-2">
       {lines.map((line, li) => (
-        <p key={li} className="text-sm text-slate-700 leading-relaxed">
+        <p key={li} className="leading-relaxed">
           {renderInline(line, `ln-${index}-${li}`)}
         </p>
       ))}
@@ -65,50 +75,28 @@ function renderBlock(text: string, index: number) {
   );
 }
 
-function splitDescription(raw: string) {
-  let body = raw.trim();
-  const closures: { label: string; text: string; className: string }[] = [];
-
-  for (const { tag, label, className } of CLOSURE_MARKERS) {
-    const idx = body.indexOf(tag);
-    if (idx !== -1) {
-      const after = body.slice(idx + tag.length).trim();
-      if (after) closures.push({ label, text: after.replace(/^\s*:\s*/, ''), className });
-      body = body.slice(0, idx).trim();
-    }
-  }
-
+function splitBody(raw: string) {
+  const body = stripClosureMarkers(raw);
   const normalized = body
     .replace(/\s*(\*\*\d+[\.\)]\s*)/g, '\n\n$1')
     .replace(/\s+(\d+[\.\)]\s+(?=[A-Za-zÁÉÍÓÚáéíóúÑñ]))/g, '\n\n$1');
 
-  const blocks = normalized.split(/\n\n+/).map((b) => b.trim()).filter(Boolean);
-  return { blocks, closures };
+  return normalized.split(/\n\n+/).map((b) => b.trim()).filter(Boolean);
 }
 
 export function FollowUpDescription({ text }: { text: string }) {
-  const { blocks, closures } = splitDescription(text);
+  const bodyOnly = stripClosureMarkers(text);
+  if (!bodyOnly) return null;
+
+  const blocks = splitBody(bodyOnly);
 
   return (
-    <div className="mt-3 space-y-3 rounded-lg bg-slate-50/90 border border-slate-100 px-3 py-3">
+    <div className="mt-3 text-sm text-slate-700 space-y-3">
       {blocks.length > 0 ? (
         blocks.map((block, i) => renderBlock(block, i))
       ) : (
-        <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">
-          {text}
-        </p>
+        <p className="leading-relaxed whitespace-pre-wrap">{bodyOnly}</p>
       )}
-      {closures.map((c, i) => (
-        <div
-          key={i}
-          className={`rounded-md border px-3 py-2 text-sm ${c.className}`}
-        >
-          <span className="font-semibold block text-xs uppercase tracking-wide opacity-80 mb-1">
-            {c.label}
-          </span>
-          <p className="leading-relaxed whitespace-pre-wrap">{c.text}</p>
-        </div>
-      ))}
     </div>
   );
 }

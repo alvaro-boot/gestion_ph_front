@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import type { ConjuntoPickerItem, ConjuntoReport } from '@/lib/types';
@@ -37,7 +37,7 @@ export function ConjuntoReportPageClient({
   const [clients] = useState(
     [...initialClients].sort((a, b) => a.name.localeCompare(b.name, 'es')),
   );
-  const [selectedId, setSelectedId] = useState(clientIdFromUrl);
+  const selectedId = clientIdFromUrl;
   const [query, setQuery] = useState('');
   const [report, setReport] = useState<ConjuntoReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -58,44 +58,54 @@ export function ConjuntoReportPageClient({
     );
   }, [clients, query]);
 
-  const loadReport = useCallback(async (id: string) => {
-    if (!id) {
+  useEffect(() => {
+    if (!selectedId) {
       setReport(null);
+      setLoading(false);
+      setError(null);
       return;
     }
+
+    let cancelled = false;
+    setReport(null);
     setLoading(true);
     setError(null);
-    try {
-      const data = await api.clients.conjuntoReport(id);
-      setReport(data);
-    } catch (err) {
-      setReport(null);
-      setError(err instanceof Error ? err.message : 'No se pudo cargar el reporte');
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
-  useEffect(() => {
-    if (selectedId) loadReport(selectedId);
-    else setReport(null);
-  }, [selectedId, loadReport]);
+    api.clients
+      .conjuntoReport(selectedId)
+      .then((data) => {
+        if (!cancelled) setReport(data);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setReport(null);
+          setError(
+            err instanceof Error ? err.message : 'No se pudo cargar el reporte',
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
 
-  useEffect(() => {
-    if (clientIdFromUrl && clientIdFromUrl !== selectedId) {
-      setSelectedId(clientIdFromUrl);
-    }
-  }, [clientIdFromUrl, selectedId]);
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId]);
 
   function handleSelect(id: string) {
-    setSelectedId(id);
     setQuery('');
     if (id) {
-      router.replace(`/conjuntos?clientId=${id}`, { scroll: false });
+      router.replace(`/conjuntos?clientId=${encodeURIComponent(id)}`, {
+        scroll: false,
+      });
     } else {
       router.replace('/conjuntos', { scroll: false });
     }
   }
+
+  const reportMatchesSelection =
+    report != null && report.client.id === selectedId;
 
   const pendingDeliveries =
     report?.deliveries.filter((d) => d.status === 'active') ?? [];
@@ -173,7 +183,7 @@ export function ConjuntoReportPageClient({
         </p>
       )}
 
-      {report && !loading && (
+      {reportMatchesSelection && !loading && (
         <div className="space-y-6">
           <header className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-6 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-4">

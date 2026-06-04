@@ -457,21 +457,32 @@ export function MeetingsCalendar({
     setSaving(true);
     try {
       if (viewItem.kind === 'next_contact') {
-        const prev = viewItem.description?.trim();
         const notes = completionNotes.trim();
-        await api.seguimientos.update(viewItem.id, {
-          description: prev
-            ? `${prev}\n\n[Contacto realizado] ${notes}`
-            : `[Contacto realizado] ${notes}`,
+        await api.seguimientos.create({
+          clientId: viewItem.clientId,
+          title: `Contacto realizado · ${viewItem.title}`,
+          description: notes,
+          followUpType: 'call',
+          occurredAt: new Date().toISOString(),
+          clientProcessId: viewItem.processId ?? undefined,
         });
       } else if (viewItem.kind === 'meeting') {
         if (viewItem.meetingSource === 'followup') {
-          const prev = viewItem.description?.trim();
           const notes = completionNotes.trim();
-          await api.seguimientos.update(viewItem.id, {
-            description: prev
-              ? `${prev}\n\n[Realizada] ${notes}`
-              : `[Realizada] ${notes}`,
+          const base = viewItem.description?.trim() ?? '';
+          const marker = '[Realizada]';
+          if (!base.includes(marker)) {
+            await api.seguimientos.update(viewItem.id, {
+              description: base ? `${base}\n${marker}` : marker,
+            });
+          }
+          await api.seguimientos.create({
+            clientId: viewItem.clientId,
+            title: `Cierre: ${viewItem.title}`,
+            description: notes,
+            followUpType: 'meeting',
+            occurredAt: new Date().toISOString(),
+            clientProcessId: viewItem.processId ?? undefined,
           });
         } else {
           await api.calendar.updateMeeting(viewItem.id, {
