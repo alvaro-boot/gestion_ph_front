@@ -105,10 +105,6 @@ function defaultDatetimeForDay(date: Date) {
 
 type AddKind = CalendarItemKind;
 
-function isClientNextContact(item: CalendarMonthItem) {
-  return item.kind === 'next_contact' && item.nextContactSource !== 'followup';
-}
-
 function isFollowUpPlannedContact(item: CalendarMonthItem) {
   return item.kind === 'next_contact' && item.nextContactSource === 'followup';
 }

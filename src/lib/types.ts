@@ -82,6 +82,17 @@ export interface FollowUpAlert {
   totalFollowUps: number;
 }
 
+export type ClientUpdatePayload = Partial<{
+  name: string;
+  contactName: string;
+  email: string;
+  phone: string;
+  company: string;
+  notes: string;
+  nextContactAt: string | null;
+  nextContactTitle: string | null;
+}>;
+
 export interface Client {
   id: string;
   name: string;

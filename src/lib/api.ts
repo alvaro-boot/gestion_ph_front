@@ -121,7 +121,7 @@ export const api = {
         method: 'POST',
         body: JSON.stringify(data),
       }),
-    update: (id: string, data: Record<string, string>) =>
+    update: (id: string, data: import('./types').ClientUpdatePayload) =>
       request<import('./types').Client>(`/clients/${id}`, {
         method: 'PATCH',
         body: JSON.stringify(data),
