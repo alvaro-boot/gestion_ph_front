@@ -32,6 +32,8 @@ const KIND_STYLES: Record<Exclude<CalendarItemKind, 'meeting' | 'next_contact'>,
   internal_delivery:
     'bg-emerald-100 border-emerald-300 text-emerald-950 hover:bg-emerald-200',
 };
+const CLIENT_DELIVERY_UNFULFILLED_STYLE =
+  'bg-rose-100 border-rose-400 text-rose-950 hover:bg-rose-200';
 
 const MEETING_ONBOARDING_STYLE =
   'bg-indigo-100 border-indigo-300 text-indigo-950 hover:bg-indigo-200';
@@ -55,6 +57,9 @@ function calendarChipStyle(item: CalendarMonthItem) {
     return item.processKind === 'seguimiento'
       ? MEETING_SEGUIMIENTO_STYLE
       : MEETING_ONBOARDING_STYLE;
+  }
+  if (item.kind === 'client_delivery' && item.status === 'unfulfilled') {
+    return CLIENT_DELIVERY_UNFULFILLED_STYLE;
   }
   return KIND_STYLES[item.kind];
 }
@@ -129,6 +134,7 @@ function statusLabel(item: CalendarMonthItem) {
     return item.status === 'overdue' ? 'Vencido' : 'Pendiente';
   }
   if (item.status === 'completed') return 'Terminada';
+  if (item.status === 'unfulfilled') return 'Incumplida';
   if (item.status === 'cancelled') return 'Cancelada';
   if (item.kind === 'meeting' && item.meetingSource === 'followup') {
     return 'Seguimiento';
@@ -163,7 +169,7 @@ function chipSecondaryLine(item: CalendarMonthItem) {
   return item.clientName;
 }
 
-type ViewAction = 'postpone' | 'complete' | null;
+type ViewAction = 'postpone' | 'complete' | 'unfulfilled' | null;
 
 export function MeetingsCalendar({
   initialBootstrap = null,
@@ -198,6 +204,7 @@ export function MeetingsCalendar({
   const [viewAction, setViewAction] = useState<ViewAction>(null);
   const [postponeAt, setPostponeAt] = useState('');
   const [completionNotes, setCompletionNotes] = useState('');
+  const [unfulfilledReason, setUnfulfilledReason] = useState('');
 
   const [meetingForm, setMeetingForm] = useState({
     scope: 'client' as 'client' | 'general',
@@ -416,12 +423,14 @@ export function MeetingsCalendar({
     const when = item.scheduledAt ?? item.at;
     setPostponeAt(toDatetimeLocalValue(new Date(when)));
     setCompletionNotes('');
+    setUnfulfilledReason('');
   }
 
   function closeViewItem() {
     setViewItem(null);
     setViewAction(null);
     setCompletionNotes('');
+    setUnfulfilledReason('');
   }
 
   async function handleCancelItem() {
@@ -493,6 +502,31 @@ export function MeetingsCalendar({
       invalidateApiCache('/calendar');
       invalidateApiCache('/clients');
       invalidateApiCache('/seguimientos');
+      closeViewItem();
+      await loadMonth();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Error');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function handleUnfulfilledItem(e: React.FormEvent) {
+    e.preventDefault();
+    if (!viewItem || viewItem.kind !== 'client_delivery') return;
+    if (!unfulfilledReason.trim()) {
+      alert('Indica por qué el cliente no cumplió la entrega.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await api.calendar.updateDelivery(viewItem.id, {
+        status: 'unfulfilled',
+        unfulfilledReason: unfulfilledReason.trim(),
+      });
+      invalidateApiCache('/calendar');
+      invalidateApiCache('/clients');
       closeViewItem();
       await loadMonth();
     } catch (err) {
@@ -715,7 +749,9 @@ export function MeetingsCalendar({
                         type="button"
                         onClick={() => openViewItem(item)}
                         className={`w-full text-left rounded-md px-2 py-1.5 text-xs leading-snug border ${calendarChipStyle(item)} ${
-                          item.status === 'completed' ? 'opacity-60 line-through' : ''
+                          item.status === 'completed' || item.status === 'unfulfilled'
+                            ? 'opacity-75 line-through'
+                            : ''
                         }`}
                       >
                         <span className="block font-semibold tabular-nums">
@@ -1038,6 +1074,12 @@ export function MeetingsCalendar({
                 {viewItem.notes ?? viewItem.completionNotes}
               </p>
             )}
+            {viewItem.unfulfilledReason && (
+              <p className="text-sm text-rose-900 mt-2 rounded-lg bg-rose-50 border border-rose-200 px-3 py-2">
+                <span className="font-medium">Incumplimiento del cliente: </span>
+                {viewItem.unfulfilledReason}
+              </p>
+            )}
 
             {viewAction === 'postpone' && itemIsOpen(viewItem) && (
               <form onSubmit={handlePostponeItem} className="mt-4 space-y-3 border-t pt-4">
@@ -1112,6 +1154,41 @@ export function MeetingsCalendar({
               </form>
             )}
 
+            {viewAction === 'unfulfilled' && itemIsOpen(viewItem) && (
+              <form onSubmit={handleUnfulfilledItem} className="mt-4 space-y-3 border-t pt-4">
+                <p className="text-sm font-medium text-rose-900">
+                  Incumplimiento por parte del cliente
+                </p>
+                <p className="text-xs text-slate-600">
+                  Registra por qué el cliente no entregó a tiempo o no cumplió el compromiso.
+                </p>
+                <textarea
+                  required
+                  rows={4}
+                  className="w-full rounded-lg border border-rose-200 px-3 py-2 text-sm"
+                  placeholder="Ej: No enviaron la base de datos; pidieron aplazar sin nueva fecha…"
+                  value={unfulfilledReason}
+                  onChange={(e) => setUnfulfilledReason(e.target.value)}
+                />
+                <div className="flex gap-2">
+                  <button
+                    type="submit"
+                    disabled={saving}
+                    className="rounded-lg bg-rose-600 px-4 py-2 text-sm text-white hover:bg-rose-700 disabled:opacity-50"
+                  >
+                    Marcar como incumplida
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setViewAction(null)}
+                    className="text-sm text-slate-600 hover:underline"
+                  >
+                    Volver
+                  </button>
+                </div>
+              </form>
+            )}
+
             {!viewAction && (
               <div className="flex flex-wrap gap-2 mt-4 pt-4 border-t border-slate-100">
                 {viewItem.kind === 'next_contact' ? (
@@ -1156,6 +1233,16 @@ export function MeetingsCalendar({
                     >
                       {viewItem.kind === 'next_contact' ? 'Realizado' : 'Terminar'}
                     </button>
+                    {viewItem.kind === 'client_delivery' && (
+                      <button
+                        type="button"
+                        disabled={saving}
+                        onClick={() => setViewAction('unfulfilled')}
+                        className="rounded-lg border border-rose-200 bg-rose-50 px-3 py-1.5 text-sm text-rose-800 hover:bg-rose-100 disabled:opacity-50"
+                      >
+                        Incumplida
+                      </button>
+                    )}
                     {viewItem.kind !== 'next_contact' && (
                       <button
                         type="button"

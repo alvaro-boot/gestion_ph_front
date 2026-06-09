@@ -180,6 +180,7 @@ export interface CalendarMonthItem {
   meetingSource?: 'stage' | 'followup' | 'general';
   notes?: string | null;
   completionNotes?: string | null;
+  unfulfilledReason?: string | null;
   /** Fecha original del compromiso si se muestra al inicio del mes por vencido */
   scheduledAt?: string | null;
   /** Próximo contacto del conjunto vs. compromiso en un seguimiento (legacy nextActionAt). */
@@ -339,6 +340,7 @@ export interface ConjuntoReportDelivery {
   status: string;
   eventType: 'client_delivery' | 'internal_delivery';
   description: string | null;
+  unfulfilledReason: string | null;
   overdue: boolean;
 }
 

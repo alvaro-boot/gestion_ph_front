@@ -113,6 +113,8 @@ export function ConjuntoReportPageClient({
     report?.deliveries.filter((d) => d.status === 'active') ?? [];
   const completedDeliveries =
     report?.deliveries.filter((d) => d.status === 'completed') ?? [];
+  const unfulfilledDeliveries =
+    report?.deliveries.filter((d) => d.status === 'unfulfilled') ?? [];
 
   return (
     <div className="space-y-8">
@@ -379,7 +381,9 @@ export function ConjuntoReportPageClient({
               <h3 className="text-lg font-semibold text-slate-900">
                 Entregas y plazos de entrega
               </h3>
-              {pendingDeliveries.length === 0 && completedDeliveries.length === 0 ? (
+              {pendingDeliveries.length === 0 &&
+              completedDeliveries.length === 0 &&
+              unfulfilledDeliveries.length === 0 ? (
                 <p className="mt-3 text-sm text-slate-500">
                   No hay entregas registradas en el calendario para este conjunto.
                 </p>
@@ -420,22 +424,54 @@ export function ConjuntoReportPageClient({
                       </ul>
                     )}
                   </div>
-                  {completedDeliveries.length > 0 && (
-                    <div>
-                      <p className="text-sm font-medium text-emerald-800">Realizadas</p>
-                      <ul className="mt-2 space-y-2">
-                        {completedDeliveries.map((d) => (
-                          <li
-                            key={d.id}
-                            className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2 text-sm opacity-90"
-                          >
-                            <p className="font-medium text-slate-800">{d.title}</p>
-                            <p className="text-xs text-slate-500">
-                              {DELIVERY_LABELS[d.eventType]} · {formatDateTime(d.dueAt)}
-                            </p>
-                          </li>
-                        ))}
-                      </ul>
+                  {(completedDeliveries.length > 0 || unfulfilledDeliveries.length > 0) && (
+                    <div className="space-y-4">
+                      {completedDeliveries.length > 0 && (
+                        <div>
+                          <p className="text-sm font-medium text-emerald-800">Realizadas</p>
+                          <ul className="mt-2 space-y-2">
+                            {completedDeliveries.map((d) => (
+                              <li
+                                key={d.id}
+                                className="rounded-lg border border-emerald-100 bg-emerald-50/50 px-3 py-2 text-sm opacity-90"
+                              >
+                                <p className="font-medium text-slate-800">{d.title}</p>
+                                <p className="text-xs text-slate-500">
+                                  {DELIVERY_LABELS[d.eventType]} · {formatDateTime(d.dueAt)}
+                                </p>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {unfulfilledDeliveries.length > 0 && (
+                        <div>
+                          <p className="text-sm font-medium text-rose-800">
+                            Incumplidas por el cliente
+                          </p>
+                          <ul className="mt-2 space-y-2">
+                            {unfulfilledDeliveries.map((d) => (
+                              <li
+                                key={d.id}
+                                className="rounded-lg border border-rose-200 bg-rose-50/80 px-3 py-2 text-sm"
+                              >
+                                <p className="font-medium text-slate-800 line-through opacity-80">
+                                  {d.title}
+                                </p>
+                                <p className="text-xs text-slate-500 mt-0.5">
+                                  {DELIVERY_LABELS[d.eventType]} · {formatDateTime(d.dueAt)}
+                                </p>
+                                {d.unfulfilledReason && (
+                                  <p className="text-sm text-rose-900 mt-2">
+                                    <span className="font-medium">Motivo: </span>
+                                    {d.unfulfilledReason}
+                                  </p>
+                                )}
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
